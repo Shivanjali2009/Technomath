@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Questions</title>
+    <!-- Material Design Lite CSS -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+    <style>
+        .mdl-layout__content {
+            padding: 24px;
+        }
+        .mdl-card {
+            width: 100%;
+            margin-bottom: 24px;
+        }
+        .mdl-card__title {
+            color: #fff;
+            background-color: #3f51b5;
+        }
+        .question-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .mdl-textfield {
+            width: 100%;
+        }
+        .option-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="mdl-layout mdl-js-layout mdl-layout--fixed-header">
+        <header class="mdl-layout__header">
+            <div class="mdl-layout__header-row">
+                <span class="mdl-layout-title">Upload Questions</span>
+                <div class="mdl-layout-spacer"></div>
+                <a href="/" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
+                    Home
+                </a>
+            </div>
+        </header>
+        <main class="mdl-layout__content">
+            <div class="mdl-card mdl-shadow--2dp">
+                <div class="mdl-card__title">
+                    <h2 class="mdl-card__title-text">Add Questions</h2>
+                </div>
+                <div class="mdl-card__supporting-text">
+                    <form action="/save_questions/{{ set_id }}" method="post" class="question-form">
+                        <div class="mdl-textfield mdl-js-textfield">
+                            <input class="mdl-textfield__input" type="number" id="num_questions" name="num_questions" min="1" value="1" required>
+                            <label class="mdl-textfield__label" for="num_questions">Number of Questions</label>
+                        </div>
+                        <div id="questions-container">
+                            <!-- Questions will be added here -->
+                        </div>
+                        <div class="action-buttons">
+                            <button type="button" class="mdl-button mdl-js-button mdl-button--raised" onclick="updateQuestions()">
+                                Update Questions
+                            </button>
+                            <button type="submit" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
+                                Save Questions
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function updateQuestions() {
+            const numQuestions = parseInt(document.getElementById('num_questions').value);
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+
+            for (let i = 0; i < numQuestions; i++) {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'mdl-card mdl-shadow--2dp';
+                questionDiv.style.marginBottom = '16px';
+                questionDiv.innerHTML = `
+                    <div class="mdl-card__title">
+                        <h2 class="mdl-card__title-text">Question ${i + 1}</h2>
+                    </div>
+                    <div class="mdl-card__supporting-text">
+                        <div class="mdl-textfield mdl-js-textfield" style="width: 100%;">
+                            <input class="mdl-textfield__input" type="text" id="question_${i}" name="question_${i}" required>
+                            <label class="mdl-textfield__label" for="question_${i}">Question</label>
+                        </div>
+                        <div class="option-grid">
+                            <div class="mdl-textfield mdl-js-textfield">
+                                <input class="mdl-textfield__input" type="text" id="A_${i}" name="A_${i}" required>
+                                <label class="mdl-textfield__label" for="A_${i}">Option A</label>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield">
+                                <input class="mdl-textfield__input" type="text" id="B_${i}" name="B_${i}" required>
+                                <label class="mdl-textfield__label" for="B_${i}">Option B</label>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield">
+                                <input class="mdl-textfield__input" type="text" id="C_${i}" name="C_${i}" required>
+                                <label class="mdl-textfield__label" for="C_${i}">Option C</label>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield">
+                                <input class="mdl-textfield__input" type="text" id="D_${i}" name="D_${i}" required>
+                                <label class="mdl-textfield__label" for="D_${i}">Option D</label>
+                            </div>
+                        </div>
+                        <div class="mdl-textfield mdl-js-textfield">
+                            <select class="mdl-textfield__input" id="correct_${i}" name="correct_${i}" required>
+                                <option value="">Select Correct Answer</option>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                                <option value="D">D</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(questionDiv);
+            }
+        }
+
+        // Initialize with one question
+        updateQuestions();
+    </script>
+</body>
+</html> 

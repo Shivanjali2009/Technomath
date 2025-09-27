@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Question Set</title>
+    <!-- Material Design Lite CSS -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+    <style>
+        body, .mdl-layout-title, .mdl-textfield__label, .mdl-button {
+            font-family: 'Poppins', sans-serif;
+        }
+        .mdl-layout__content {
+            padding: 24px;
+        }
+        .mdl-card {
+            width: 100%;
+            margin-bottom: 24px;
+        }
+        .mdl-card__title {
+            color: #fff;
+            background-color: #3f51b5;
+        }
+        .question-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .mdl-textfield {
+            width: 100%;
+        }
+        .option-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            justify-content: flex-end;
+        }
+        .question-card {
+            margin-bottom: 16px;
+            border-left: 5px solid #4CAF50;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 320px;
+        }
+        .toast {
+            background-color: #F44336; /* Red for error */
+            color: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.5s, transform 0.5s;
+            transform: translateX(100%);
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .toast .close-btn {
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="mdl-layout mdl-js-layout mdl-layout--fixed-header">
+        <header class="mdl-layout__header">
+            <div class="mdl-layout__header-row">
+                <span class="mdl-layout-title">Edit Question Set</span>
+                <div class="mdl-layout-spacer"></div>
+                <a href="/" class="mdl-button mdl-js-button mdl-button--raised mdl-button--accent">
+                    Back to Home
+                </a>
+            </div>
+        </header>
+        <main class="mdl-layout__content">
+            <div class="toast-container">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="toast" data-category="{{ category }}">{{ message }} <button class="close-btn">&times;</button></div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <div class="mdl-card mdl-shadow--2dp">
+                <div class="mdl-card__title">
+                    <h2 class="mdl-card__title-text">Editing: {{ question_set[1] }}</h2>
+                </div>
+                <div class="mdl-card__supporting-text">
+                    <form action="{{ url_for('update_quiz', set_id=question_set[0]) }}" method="post" id="edit-quiz-form">
+                        <!-- Question Set Metadata -->
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                            <input class="mdl-textfield__input" type="text" id="name" name="name" value="{{ question_set[1] }}" required>
+                            <label class="mdl-textfield__label" for="name">Question Set Name</label>
+                        </div>
+                        <div class="option-grid">
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <select class="mdl-textfield__input" id="class" name="class" required>
+                                    {% for grade in range(4, 9) %}
+                                        <option value="Grade {{ grade }}" {% if question_set[2] == 'Grade ' + grade|string %}selected{% endif %}>Grade {{ grade }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <select class="mdl-textfield__input" id="level" name="level" required>
+                                    <option value="Easy" {% if question_set[3] == 'Easy' %}selected{% endif %}>Easy</option>
+                                    <option value="Medium" {% if question_set[3] == 'Medium' %}selected{% endif %}>Medium</option>
+                                    <option value="Hard" {% if question_set[3] == 'Hard' %}selected{% endif %}>Hard</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <hr>
+                        <h4 style="font-weight: 600;">Questions</h4>
+
+                        <input type="hidden" id="num_questions" name="num_questions" value="{{ questions|length }}">
+                        <div id="questions-container">
+                            <!-- Dynamic questions will be loaded here by script -->
+                        </div>
+
+                        <div class="action-buttons">
+                            <button type="button" class="mdl-button mdl-js-button mdl-button--raised" onclick="addQuestion()">
+                                Add Question
+                            </button>
+                            <button type="submit" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
+                                Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // This script block handles the data from the server.
+        const questionsData = {{ questions|tojson|safe }};
+    </script>
+    <script>
+        // This script block contains the main application logic.
+        let questions = questionsData;
+        let questionCounter = questions.length;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const toasts = document.querySelectorAll('.toast');
+            toasts.forEach((toast, index) => {
+                // Stagger the appearance
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, index * 300);
+
+                // Auto-dismiss after 5 seconds
+                const timer = setTimeout(() => {
+                    toast.classList.remove('show');
+                }, 5000);
+
+                // Manual close
+                toast.querySelector('.close-btn').addEventListener('click', () => {
+                    clearTimeout(timer);
+                    toast.classList.remove('show');
+                });
+            });
+
+            // Initial render of questions
+            renderQuestions();
+        });
+
+        function renderQuestions() {
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+            document.getElementById('num_questions').value = questions.length;
+
+            questions.forEach((q, i) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'mdl-card mdl-shadow--2dp question-card';
+                questionDiv.innerHTML = `
+                    <div class="mdl-card__supporting-text">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h5 style="margin: 0;">Question ${i + 1}</h5>
+                            <button type="button" class="mdl-button mdl-js-button mdl-button--icon mdl-button--colored" onclick="removeQuestion(${i})">
+                                <i class="material-icons">delete</i>
+                            </button>
+                        </div>
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label" style="width: 100%;">
+                            <input class="mdl-textfield__input" type="text" id="question_${i}" name="question_${i}" value="${q[2]}" required>
+                            <label class="mdl-textfield__label" for="question_${i}">Question Text</label>
+                        </div>
+                        <div class="option-grid">
+                            ${['A', 'B', 'C', 'D'].map((opt, idx) => `
+                                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                    <input class="mdl-textfield__input" type="text" id="${opt}_${i}" name="${opt}_${i}" value="${q[3+idx]}" required>
+                                    <label class="mdl-textfield__label" for="${opt}_${i}">Option ${opt}</label>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                            <select class="mdl-textfield__input" id="correct_${i}" name="correct_${i}" required>
+                                ${['A', 'B', 'C', 'D'].map(opt => `
+                                    <option value="${opt}" ${q[7] === opt ? 'selected' : ''}>${opt}</option>
+                                `).join('')}
+                            </select>
+                            <label class="mdl-textfield__label" for="correct_${i}">Correct Answer</label>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(questionDiv);
+                componentHandler.upgradeDom();
+            });
+        }
+
+        function addQuestion() {
+            questions.push(["", "", "", "", "", "", "", "A"]);
+            renderQuestions();
+        }
+
+        function removeQuestion(index) {
+            questions.splice(index, 1);
+            renderQuestions();
+        }
+    </script>
+</body>
+</html> 
