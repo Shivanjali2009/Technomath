@@ -557,7 +557,7 @@ def live_responses_stream():
             'question_text': current_question['question'],
             'responses': responses
         })}\n\n"
-        
+          
         # Set up Firestore real-time listener
         def on_response_update(responses):
             for response in responses:
