@@ -552,22 +552,24 @@ def live_responses_stream():
         for response in responses:
             response['question_text'] = current_question['question']
         
-        yield f"data: {json.dumps({
+        data = {
             'question_id': question_id,
             'question_text': current_question['question'],
             'responses': responses
-        })}\n\n"
+        }
+        yield f"data: {json.dumps(data)}\n\n"
           
         # Set up Firestore real-time listener
         def on_response_update(responses):
             for response in responses:
                 response['question_text'] = current_question['question']
             
-            yield f"data: {json.dumps({
+            data = {
                 'question_id': question_id,
                 'question_text': current_question['question'],
                 'responses': responses
-            })}\n\n"
+            }
+            yield f"data: {json.dumps(data)}\n\n"
         
         # Note: In a production environment, you'd want to properly manage
         # the Firestore listener lifecycle and handle disconnections
