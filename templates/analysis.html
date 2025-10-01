@@ -106,20 +106,6 @@
                 </div>
                 <div class="mdl-card__supporting-text">
                     <p>{{ set_details[1] }} • {{ set_details[2] }}</p>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-top: 16px;">
-                        <div style="text-align: center; padding: 12px; background: #f5f5f5; border-radius: 4px;">
-                            <div style="font-size: 24px; font-weight: bold; color: #3f51b5;">{{ total_students }}</div>
-                            <div style="color: #666;">Students</div>
-                        </div>
-                        <div style="text-align: center; padding: 12px; background: #f5f5f5; border-radius: 4px;">
-                            <div style="font-size: 24px; font-weight: bold; color: #3f51b5;">{{ total_responses }}</div>
-                            <div style="color: #666;">Total Responses</div>
-                        </div>
-                        <div style="text-align: center; padding: 12px; background: #f5f5f5; border-radius: 4px;">
-                            <div style="font-size: 24px; font-weight: bold; color: #3f51b5;">{{ "%.1f"|format(average_percentage) }}%</div>
-                            <div style="color: #666;">Average Score</div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -161,52 +147,10 @@
                 </div>
             </div>
 
-            <!-- Question Difficulty Analysis -->
-            <div class="mdl-card mdl-shadow--2dp">
-                <div class="mdl-card__title">
-                    <h2 class="mdl-card__title-text">Question Difficulty Analysis</h2>
-                </div>
-                <div class="mdl-card__supporting-text">
-                    <div class="question-analysis">
-                        {% for q in question_difficulty %}
-                        <div class="question-card">
-                            <div class="question-text">Question {{ loop.index }}: {{ q.question }}</div>
-                            <div class="question-stats">
-                                <div class="question-stat">
-                                    <div class="stat-value">{{ q.total_responses }}</div>
-                                    <div class="stat-label">Total Responses</div>
-                                </div>
-                                <div class="question-stat">
-                                    <div class="stat-value">{{ q.correct_responses }}</div>
-                                    <div class="stat-label">Correct Responses</div>
-                                </div>
-                                <div class="question-stat">
-                                    <div class="stat-value">{{ "%.1f"|format(q.difficulty) }}%</div>
-                                    <div class="stat-label">Success Rate</div>
-                                </div>
-                                <div class="question-stat">
-                                    <div class="stat-value">
-                                        {% if q.difficulty >= 80 %}
-                                            <span style="color: #4CAF50;">Easy</span>
-                                        {% elif q.difficulty >= 60 %}
-                                            <span style="color: #FF9800;">Medium</span>
-                                        {% else %}
-                                            <span style="color: #F44336;">Hard</span>
-                                        {% endif %}
-                                    </div>
-                                    <div class="stat-label">Difficulty</div>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-
             <!-- Question Analysis -->
             <div class="mdl-card mdl-shadow--2dp">
                 <div class="mdl-card__title">
-                    <h2 class="mdl-card__title-text">Detailed Question Analysis</h2>
+                    <h2 class="mdl-card__title-text">Question Analysis</h2>
                 </div>
                 <div class="mdl-card__supporting-text">
                     <div class="question-analysis">
