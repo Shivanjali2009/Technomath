@@ -2,9 +2,8 @@ import os, json, base64
 from datetime import datetime
 from collections import defaultdict
 
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
 from werkzeug.middleware.proxy_fix import ProxyFix
-from flask_socketio import SocketIO
 
 # ------------------ Firebase Admin (lazy init) ------------------
 import firebase_admin
@@ -50,8 +49,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
 # Respect Render/Cloudflare proxy headers
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
-# Use threading backend (no gevent/eventlet conflicts)
-socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*")
 
 
 # ================== STORAGE HELPERS (Firestore) ==================
@@ -184,12 +181,87 @@ def question_analysis_data(set_id):
         out.append((qid, q.get("question", ""), q.get("correct", "A"), total, corrects))
     return out
 
+def get_recent_responses(set_id, question_id, limit=50):
+    """Get recent responses for a specific question in a set"""
+    try:
+        db = get_db()
+        responses = []
+        
+        # First try with ordering, if that fails, try without ordering
+        try:
+            docs = db.collection("responses")\
+                     .where("set_id", "==", set_id)\
+                     .where("question_id", "==", question_id)\
+                     .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+                     .limit(limit).stream()
+        except Exception as e:
+            print(f"Ordered query failed, trying without ordering: {e}")
+            # Fallback: get all responses and sort in Python
+            docs = db.collection("responses")\
+                     .where("set_id", "==", set_id)\
+                     .where("question_id", "==", question_id)\
+                     .stream()
+        
+        for doc in docs:
+            data = doc.to_dict() or {}
+            responses.append({
+                "student": data.get("student", ""),
+                "option": data.get("answer", ""),
+                "correct": data.get("is_correct", False),
+                "timestamp": data.get("timestamp"),
+                "question_id": question_id
+            })
+        
+        # If we didn't use ordering, sort by timestamp in Python
+        if not any("order_by" in str(docs) for docs in [docs]):
+            responses.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        
+        return responses[:limit]
+    except Exception as e:
+        print(f"Error in get_recent_responses: {e}")
+        return []
+
+def setup_firestore_realtime_listener(set_id, question_id, callback):
+    """Set up Firestore real-time listener for responses"""
+    db = get_db()
+    
+    def on_snapshot(col_snapshot, changes, read_time):
+        responses = []
+        for doc in col_snapshot:
+            data = doc.to_dict() or {}
+            responses.append({
+                "student": data.get("student", ""),
+                "option": data.get("answer", ""),
+                "correct": data.get("is_correct", False),
+                "timestamp": data.get("timestamp"),
+                "question_id": question_id
+            })
+        callback(responses)
+    
+    # Create the listener
+    query = db.collection("responses")\
+              .where("set_id", "==", set_id)\
+              .where("question_id", "==", question_id)\
+              .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+              .limit(50)
+    
+    return query.on_snapshot(on_snapshot)
+
 
 # ================== IN-MEMORY STATE ==================
-active_quiz = None
-current_question_index = -1
-student_scores = defaultdict(int)
-current_set_id = None
+# Using a simple dictionary to store quiz sessions by session ID
+quiz_sessions = {}
+current_session_id = None
+
+# Default session data structure
+def create_quiz_session(set_id, questions):
+    return {
+        'active_quiz': questions,
+        'current_question_index': 0,
+        'student_scores': defaultdict(int),
+        'current_set_id': set_id,
+        'created_at': datetime.now()
+    }
 
 
 # ================== ROUTES ==================
@@ -200,6 +272,15 @@ def get_question_sets():
 @app.route('/healthz')
 def healthz():
     return "ok", 200
+
+@app.route('/api/debug')
+def debug():
+    """Debug endpoint to check server state"""
+    return jsonify({
+        "current_session_id": current_session_id,
+        "active_sessions": list(quiz_sessions.keys()),
+        "current_session": quiz_sessions.get(current_session_id, {}) if current_session_id else {}
+    })
 
 @app.route('/__firetest')
 def firetest():
@@ -286,66 +367,234 @@ def delete_quiz(set_id):
 
 @app.route('/start_quiz/<set_id>')
 def start_quiz(set_id):
-    global active_quiz, current_question_index, student_scores, current_set_id
+    global current_session_id
     questions = get_questions(set_id)
     if not questions:
         flash('This question set is empty. Please add questions before starting the quiz.', 'error')
         return redirect(url_for('edit_quiz', set_id=set_id))
-    active_quiz = questions
-    current_question_index = 0
-    student_scores = defaultdict(int)
-    current_set_id = set_id
+    
+    # Create a new session
+    session_id = f"quiz_{set_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    quiz_sessions[session_id] = create_quiz_session(set_id, questions)
+    current_session_id = session_id
+    
     return redirect(url_for('dashboard'))
+
+@app.route('/start_quiz_realtime/<set_id>')
+def start_quiz_realtime(set_id):
+    global current_session_id
+    questions = get_questions(set_id)
+    if not questions:
+        flash('This question set is empty. Please add questions before starting the quiz.', 'error')
+        return redirect(url_for('edit_quiz', set_id=set_id))
+    
+    # Create a new session
+    session_id = f"quiz_{set_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    quiz_sessions[session_id] = create_quiz_session(set_id, questions)
+    current_session_id = session_id
+    
+    return redirect(url_for('dashboard_realtime'))
 
 @app.route('/dashboard')
 def dashboard():
-    if not active_quiz or current_question_index == -1 or current_question_index >= len(active_quiz):
+    if not current_session_id or current_session_id not in quiz_sessions:
         return redirect(url_for('home'))
+    
+    session = quiz_sessions[current_session_id]
+    active_quiz = session['active_quiz']
+    current_question_index = session['current_question_index']
+    
+    if current_question_index < 0 or current_question_index >= len(active_quiz):
+        return redirect(url_for('home'))
+    
     q = active_quiz[current_question_index]
     return render_template('dashboard.html',
                            quiz=q, index=current_question_index,
-                           total=len(active_quiz), current_set_id=current_set_id)
+                           total=len(active_quiz), current_set_id=session['current_set_id'])
+
+@app.route('/dashboard_realtime')
+def dashboard_realtime():
+    if not current_session_id or current_session_id not in quiz_sessions:
+        return redirect(url_for('home'))
+    
+    session = quiz_sessions[current_session_id]
+    active_quiz = session['active_quiz']
+    current_question_index = session['current_question_index']
+    
+    if current_question_index < 0 or current_question_index >= len(active_quiz):
+        return redirect(url_for('home'))
+    
+    q = active_quiz[current_question_index]
+    return render_template('dashboard_realtime.html',
+                           quiz=q, index=current_question_index,
+                           total=len(active_quiz), current_set_id=session['current_set_id'])
 
 @app.route('/next')
 def next_question():
-    global current_question_index
-    if current_question_index < len(active_quiz) - 1:
-        current_question_index += 1
-        socketio.emit("new_question", active_quiz[current_question_index])
+    if not current_session_id or current_session_id not in quiz_sessions:
+        return redirect(url_for('home'))
+    
+    session = quiz_sessions[current_session_id]
+    active_quiz = session['active_quiz']
+    
+    if session['current_question_index'] < len(active_quiz) - 1:
+        session['current_question_index'] += 1
+    
     return redirect(url_for('dashboard'))
 
 @app.route('/receive_data')
 def receive_data():
     student = (request.args.get('student') or '').strip()
     option = (request.args.get('option') or '').strip().upper()
-    if student and 0 <= current_question_index < len(active_quiz):
-        question = active_quiz[current_question_index]
-        # avoid duplicate name in any option list
-        if student not in sum(question['responses'].values(), []):
-            question['responses'][option].append(student)
-            correct = option == question['correct']
-            if correct:
-                student_scores[student] += 1
-            # Persist response
-            record_response(current_set_id, question['id'], student, option, correct)
-            # Emit live response with embedded data
-            response_data = {
-                "student": student, 
-                "option": option, 
-                "correct": correct,
-                "timestamp": datetime.now().isoformat(),
-                "question_id": question['id'],
-                "question_text": question['question']
-            }
-            socketio.emit('new_response', response_data)
-            # Return JSON response with embedded live response data
-            return jsonify(response_data), 200
-    return jsonify({"error": "Invalid request"}), 400
+    
+    if not student or not option:
+        return jsonify({"error": "Missing student name or option"}), 400
+    
+    # Check if there's an active quiz session
+    if not current_session_id or current_session_id not in quiz_sessions:
+        return jsonify({"error": "No active quiz session. Please start a quiz first by visiting /start_quiz/<set_id>"}), 400
+    
+    session = quiz_sessions[current_session_id]
+    active_quiz = session['active_quiz']
+    current_question_index = session['current_question_index']
+    
+    if current_question_index < 0 or current_question_index >= len(active_quiz):
+        return jsonify({"error": "Invalid question index"}), 400
+    
+    question = active_quiz[current_question_index]
+    
+    # Check for duplicate responses
+    if student in sum(question['responses'].values(), []):
+        return jsonify({"error": "Student has already responded to this question"}), 400
+    
+    # Add response to in-memory state
+    question['responses'][option].append(student)
+    correct = option == question['correct']
+    if correct:
+        session['student_scores'][student] += 1
+    
+    # Persist response to Firestore
+    record_response(session['current_set_id'], question['id'], student, option, correct)
+    
+    # Return JSON response with embedded live response data
+    response_data = {
+        "student": student, 
+        "option": option, 
+        "correct": correct,
+        "timestamp": datetime.now().isoformat(),
+        "question_id": question['id'],
+        "question_text": question['question']
+    }
+    return jsonify(response_data), 200
+
+@app.route('/api/live_responses')
+def live_responses():
+    """API endpoint for polling live responses"""
+    try:
+        if not current_session_id or current_session_id not in quiz_sessions:
+            return jsonify({"error": "No active quiz session"}), 400
+        
+        session = quiz_sessions[current_session_id]
+        active_quiz = session['active_quiz']
+        current_question_index = session['current_question_index']
+        
+        if current_question_index < 0 or current_question_index >= len(active_quiz):
+            return jsonify({"error": "Invalid question index"}), 400
+        
+        current_question = active_quiz[current_question_index]
+        question_id = current_question['id'] 
+        
+        # Get responses from in-memory state first (faster and more reliable)
+        responses = []
+        for option, students in current_question['responses'].items():
+            for student in students:
+                correct = option == current_question['correct']
+                responses.append({
+                    "student": student,
+                    "option": option,
+                    "correct": correct,
+                    "timestamp": datetime.now().isoformat(),  # Use current time for display
+                    "question_id": question_id,
+                    "question_text": current_question['question']
+                })
+        
+        # Sort by timestamp (most recent first)
+        responses.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return jsonify({
+            "question_id": question_id,
+            "question_text": current_question['question'],
+            "responses": responses
+        })
+    except Exception as e:
+        print(f"Error in live_responses: {e}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/live_responses_stream')
+def live_responses_stream():
+    """Server-Sent Events endpoint for real-time response updates"""
+    if not current_session_id or current_session_id not in quiz_sessions:
+        return jsonify({"error": "No active quiz session"}), 400
+    
+    session = quiz_sessions[current_session_id]
+    active_quiz = session['active_quiz']
+    current_question_index = session['current_question_index']
+    
+    if current_question_index < 0 or current_question_index >= len(active_quiz):
+        return jsonify({"error": "Invalid question index"}), 400
+    
+    current_question = active_quiz[current_question_index]
+    question_id = current_question['id']
+    
+    def generate():
+        # Send initial data
+        responses = get_recent_responses(session['current_set_id'], question_id)
+        for response in responses:
+            response['question_text'] = current_question['question']
+        
+        yield f"data: {json.dumps({
+            'question_id': question_id,
+            'question_text': current_question['question'],
+            'responses': responses
+        })}\n\n"
+        
+        # Set up Firestore real-time listener
+        def on_response_update(responses):
+            for response in responses:
+                response['question_text'] = current_question['question']
+            
+            yield f"data: {json.dumps({
+                'question_id': question_id,
+                'question_text': current_question['question'],
+                'responses': responses
+            })}\n\n"
+        
+        # Note: In a production environment, you'd want to properly manage
+        # the Firestore listener lifecycle and handle disconnections
+        listener = setup_firestore_realtime_listener(session['current_set_id'], question_id, on_response_update)
+        
+        try:
+            while True:
+                # Keep the connection alive
+                yield "data: {}\n\n"
+                import time
+                time.sleep(1)
+        except GeneratorExit:
+            # Clean up listener when client disconnects
+            if 'listener' in locals():
+                listener.unsubscribe()
+    
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/analysis')
 def analysis():
-    if not current_set_id:
+    if not current_session_id or current_session_id not in quiz_sessions:
         return redirect(url_for('home'))
+
+    session = quiz_sessions[current_session_id]
+    current_set_id = session['current_set_id']
+    student_scores = session['student_scores']
+    active_quiz = session['active_quiz']
 
     set_details = question_set_details(current_set_id)
     total_questions = count_questions(current_set_id)
@@ -391,5 +640,5 @@ def analysis():
                            question_difficulty=question_difficulty)
 
 if __name__ == '__main__':
-    # Local dev: threading backend; Render uses Gunicorn
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    # Local dev: standard Flask run; Render uses Gunicorn
+    app.run(host='0.0.0.0', port=5000, debug=True)

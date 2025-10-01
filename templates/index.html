@@ -228,7 +228,10 @@
                                 </div>
                                 <div class="mdl-card__actions mdl-card--border">
                                     <a href="{{ url_for('start_quiz', set_id=set[0]) }}" class="mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect mdl-button--raised">
-                                        Start Quiz
+                                        Start Quiz (Polling)
+                                    </a>
+                                    <a href="{{ url_for('start_quiz_realtime', set_id=set[0]) }}" class="mdl-button mdl-button--accent mdl-js-button mdl-js-ripple-effect mdl-button--raised">
+                                        Start Quiz (Real-time)
                                     </a>
                                 </div>
                             </div>
