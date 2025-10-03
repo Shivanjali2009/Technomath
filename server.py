@@ -2,7 +2,7 @@ import os, json, base64
 from datetime import datetime
 from collections import defaultdict
 
-from flask import Flask, request, render_template, redirect, url_for, flash, jsonify, Response
+from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 # ------------------ Firebase Admin (lazy init) ------------------
@@ -41,7 +41,7 @@ def get_db():
     return _db
 
 
-# ------------------ Flask / SocketIO ------------------
+# ------------------ Flask App Configuration ------------------
 app = Flask(__name__)
 CORS(app)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
@@ -50,12 +50,12 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret')
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 
-
 # ================== STORAGE HELPERS (Firestore) ==================
 
 def create_question_set(name, class_name, level):
+    """Create a new question set in Firestore."""
     db = get_db()
-    doc_ref = db.collection("question_sets").document()  # auto-id
+    doc_ref = db.collection("question_sets").document()
     doc_ref.set({
         "name": name,
         "class": class_name,
@@ -65,6 +65,7 @@ def create_question_set(name, class_name, level):
     return doc_ref.id
 
 def list_question_sets():
+    """Get all question sets ordered by creation date."""
     db = get_db()
     qs = db.collection("question_sets").order_by(
         "created_at", direction=firestore.Query.DESCENDING
@@ -82,6 +83,7 @@ def list_question_sets():
     return out
 
 def add_question(set_id, q, a, b, c_, d, correct, idx):
+    """Add a question to a question set."""
     db = get_db()
     db.collection("question_sets").document(set_id)\
       .collection("questions").add({
@@ -95,6 +97,7 @@ def add_question(set_id, q, a, b, c_, d, correct, idx):
       })
 
 def get_questions(set_id):
+    """Get all questions for a question set."""
     db = get_db()
     docs = db.collection("question_sets").document(set_id)\
              .collection("questions").order_by("idx").stream()
@@ -116,6 +119,7 @@ def get_questions(set_id):
     return questions
 
 def reset_questions(set_id):
+    """Delete all questions in a question set."""
     db = get_db()
     sub = db.collection("question_sets").document(set_id).collection("questions")
     batch = db.batch()
@@ -129,11 +133,13 @@ def reset_questions(set_id):
     batch.commit()
 
 def delete_set(set_id):
+    """Delete a question set and all its questions."""
     reset_questions(set_id)
     db = get_db()
     db.collection("question_sets").document(set_id).delete()
 
 def record_response(set_id, question_id, student, option, is_correct):
+    """Record a student's response in Firestore."""
     db = get_db()
     db.collection("responses").add({
         "set_id": set_id,
@@ -144,7 +150,96 @@ def record_response(set_id, question_id, student, option, is_correct):
         "timestamp": firestore.SERVER_TIMESTAMP
     })
 
+def get_or_create_student(tag_id):
+    """Get existing student or create new one with auto-incrementing number."""
+    db = get_db()
+    
+    # First, try to find existing student by tag_id
+    students_ref = db.collection("students")
+    existing_student = students_ref.where("tag_id", "==", tag_id).limit(1).stream()
+    
+    for doc in existing_student:
+        return doc.to_dict()["name"]
+    
+    # If not found, create new student
+    # Get the next student number
+    all_students = students_ref.order_by("created_at", direction=firestore.Query.DESCENDING).limit(1).stream()
+    next_num = 1
+    
+    for doc in all_students:
+        student_data = doc.to_dict()
+        if "name" in student_data and student_data["name"].startswith("Student "):
+            try:
+                current_num = int(student_data["name"].split(" ")[1])
+                next_num = current_num + 1
+            except (ValueError, IndexError):
+                pass
+        break
+    
+    # Create new student
+    student_name = f"Student {next_num:02d}"
+    student_data = {
+        "name": student_name,
+        "tag_id": tag_id,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    }
+    
+    # Add to Firestore
+    doc_ref = db.collection("students").add(student_data)
+    print(f"Created new student: {student_name} with tag_id: {tag_id}")
+    
+    return student_name
+
+def get_all_students():
+    """Get all students from Firestore."""
+    db = get_db()
+    students = []
+    for doc in db.collection("students").order_by("created_at").stream():
+        student_data = doc.to_dict()
+        student_data["id"] = doc.id
+        students.append(student_data)
+    return students
+
+def update_student_name(student_id, new_name):
+    """Update student name."""
+    db = get_db()
+    db.collection("students").document(student_id).update({
+        "name": new_name,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
+
+def create_student_from_name(student_name):
+    """Create a student from a provided name (for manual API calls)."""
+    db = get_db()
+    
+    # Check if student already exists with this name
+    existing_student = db.collection("students").where("name", "==", student_name).limit(1).stream()
+    
+    for doc in existing_student:
+        print(f"Found existing student: {student_name}")
+        return student_name
+    
+    # If not found, create new student
+    # Generate a unique tag_id for manual entries
+    import uuid
+    tag_id = f"manual_{str(uuid.uuid4())[:8]}"
+    
+    student_data = {
+        "name": student_name,
+        "tag_id": tag_id,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    }
+    
+    # Add to Firestore
+    doc_ref = db.collection("students").add(student_data)
+    print(f"Created new student from name: {student_name} with tag_id: {tag_id}")
+    
+    return student_name
+
 def question_set_details(set_id):
+    """Get details of a question set."""
     db = get_db()
     doc = db.collection("question_sets").document(set_id).get()
     if not doc.exists:
@@ -153,11 +248,13 @@ def question_set_details(set_id):
     return (d.get("name"), d.get("class"), d.get("level"))
 
 def count_questions(set_id):
+    """Count questions in a question set."""
     db = get_db()
     return sum(1 for _ in db.collection("question_sets").document(set_id)
                  .collection("questions").stream())
 
 def correct_count_for_student_in_set(student, set_id):
+    """Count correct responses for a student in a set."""
     db = get_db()
     snaps = db.collection("responses")\
               .where("student", "==", student)\
@@ -167,6 +264,7 @@ def correct_count_for_student_in_set(student, set_id):
     return sum(1 for _ in snaps)
 
 def question_analysis_data(set_id):
+    """Get analysis data for all questions in a set."""
     db = get_db()
     out = []
     for qdoc in db.collection("question_sets").document(set_id)\
@@ -181,80 +279,13 @@ def question_analysis_data(set_id):
         out.append((qid, q.get("question", ""), q.get("correct", "A"), total, corrects))
     return out
 
-def get_recent_responses(set_id, question_id, limit=50):
-    """Get recent responses for a specific question in a set"""
-    try:
-        db = get_db()
-        responses = []
-        
-        # First try with ordering, if that fails, try without ordering
-        try:
-            docs = db.collection("responses")\
-                     .where("set_id", "==", set_id)\
-                     .where("question_id", "==", question_id)\
-                     .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-                     .limit(limit).stream()
-        except Exception as e:
-            print(f"Ordered query failed, trying without ordering: {e}")
-            # Fallback: get all responses and sort in Python
-            docs = db.collection("responses")\
-                     .where("set_id", "==", set_id)\
-                     .where("question_id", "==", question_id)\
-                     .stream()
-        
-        for doc in docs:
-            data = doc.to_dict() or {}
-            responses.append({
-                "student": data.get("student", ""),
-                "option": data.get("answer", ""),
-                "correct": data.get("is_correct", False),
-                "timestamp": data.get("timestamp"),
-                "question_id": question_id
-            })
-        
-        # If we didn't use ordering, sort by timestamp in Python
-        if not any("order_by" in str(docs) for docs in [docs]):
-            responses.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        
-        return responses[:limit]
-    except Exception as e:
-        print(f"Error in get_recent_responses: {e}")
-        return []
 
-def setup_firestore_realtime_listener(set_id, question_id, callback):
-    """Set up Firestore real-time listener for responses"""
-    db = get_db()
-    
-    def on_snapshot(col_snapshot, changes, read_time):
-        responses = []
-        for doc in col_snapshot:
-            data = doc.to_dict() or {}
-            responses.append({
-                "student": data.get("student", ""),
-                "option": data.get("answer", ""),
-                "correct": data.get("is_correct", False),
-                "timestamp": data.get("timestamp"),
-                "question_id": question_id
-            })
-        callback(responses)
-    
-    # Create the listener
-    query = db.collection("responses")\
-              .where("set_id", "==", set_id)\
-              .where("question_id", "==", question_id)\
-              .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-              .limit(50)
-    
-    return query.on_snapshot(on_snapshot)
-
-
-# ================== IN-MEMORY STATE ==================
-# Using a simple dictionary to store quiz sessions by session ID
+# ================== SESSION MANAGEMENT ==================
 quiz_sessions = {}
 current_session_id = None
 
-# Default session data structure
 def create_quiz_session(set_id, questions):
+    """Create a new quiz session."""
     return {
         'active_quiz': questions,
         'current_question_index': 0,
@@ -263,19 +294,37 @@ def create_quiz_session(set_id, questions):
         'created_at': datetime.now()
     }
 
+def cleanup_expired_sessions():
+    """Clean up sessions older than 24 hours."""
+    current_time = datetime.now()
+    expired_sessions = []
+    
+    for session_id, session_data in quiz_sessions.items():
+        session_age = current_time - session_data['created_at']
+        if session_age.total_seconds() > 86400:  # 24 hours
+            expired_sessions.append(session_id)
+    
+    for session_id in expired_sessions:
+        del quiz_sessions[session_id]
+        print(f"Cleaned up expired session: {session_id}")
+    
+    return len(expired_sessions)
+
 
 # ================== ROUTES ==================
 
 def get_question_sets():
+    """Get all question sets."""
     return list_question_sets()
 
 @app.route('/healthz')
 def healthz():
+    """Health check endpoint."""
     return "ok", 200
 
 @app.route('/api/debug')
 def debug():
-    """Debug endpoint to check server state"""
+    """Debug endpoint to check server state."""
     return jsonify({
         "current_session_id": current_session_id,
         "active_sessions": list(quiz_sessions.keys()),
@@ -284,6 +333,7 @@ def debug():
 
 @app.route('/__firetest')
 def firetest():
+    """Test Firebase connection."""
     try:
         db = get_db()
         next(db.collection("question_sets").limit(1).stream(), None)
@@ -293,11 +343,13 @@ def firetest():
 
 @app.route('/')
 def home():
+    """Home page with question sets."""
     question_sets = get_question_sets()
     return render_template('index.html', question_sets=question_sets)
 
 @app.route('/create_question_set', methods=['POST'])
 def create_question_set_route():
+    """Create a new question set."""
     name = request.form.get('name')
     class_name = request.form.get('class')
     level = request.form.get('level')
@@ -306,10 +358,12 @@ def create_question_set_route():
 
 @app.route('/upload_questions/<set_id>')
 def upload_questions(set_id):
+    """Upload questions page."""
     return render_template('upload.html', set_id=set_id)
 
 @app.route('/save_questions/<set_id>', methods=['POST'])
 def save_questions(set_id):
+    """Save questions to a question set."""
     num_questions = int(request.form.get('num_questions', 0))
     for i in range(num_questions):
         q = request.form.get(f'question_{i}')
@@ -324,17 +378,18 @@ def save_questions(set_id):
 
 @app.route('/edit_quiz/<set_id>')
 def edit_quiz(set_id):
+    """Edit quiz page."""
     qs = question_set_details(set_id)
     questions = get_questions(set_id)
     if not qs:
         flash('Question set not found.', 'error')
         return redirect(url_for('home'))
-    # (id, name, class, level, created_at) for your template
     question_set = (set_id, qs[0], qs[1], qs[2], None)
     return render_template('edit_quiz.html', question_set=question_set, questions=questions)
 
 @app.route('/update_quiz/<set_id>', methods=['POST'])
 def update_quiz(set_id):
+    """Update a quiz."""
     db = get_db()
     # Update metadata
     db.collection("question_sets").document(set_id).set({
@@ -361,12 +416,14 @@ def update_quiz(set_id):
 
 @app.route('/delete_quiz/<set_id>')
 def delete_quiz(set_id):
+    """Delete a quiz."""
     delete_set(set_id)
     flash('Question set deleted successfully!', 'success')
     return redirect(url_for('home'))
 
 @app.route('/start_quiz/<set_id>')
 def start_quiz(set_id):
+    """Start a quiz session."""
     global current_session_id
     questions = get_questions(set_id)
     if not questions:
@@ -377,34 +434,37 @@ def start_quiz(set_id):
     session_id = f"quiz_{set_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     quiz_sessions[session_id] = create_quiz_session(set_id, questions)
     current_session_id = session_id
+    
+    print(f"Debug: Started quiz session {session_id} for set {set_id}")
+    print(f"Debug: Total sessions: {len(quiz_sessions)}")
     
     return redirect(url_for('dashboard'))
 
-@app.route('/start_quiz_realtime/<set_id>')
-def start_quiz_realtime(set_id):
-    global current_session_id
-    questions = get_questions(set_id)
-    if not questions:
-        flash('This question set is empty. Please add questions before starting the quiz.', 'error')
-        return redirect(url_for('edit_quiz', set_id=set_id))
-    
-    # Create a new session
-    session_id = f"quiz_{set_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    quiz_sessions[session_id] = create_quiz_session(set_id, questions)
-    current_session_id = session_id
-    
-    return redirect(url_for('dashboard_realtime'))
-
 @app.route('/dashboard')
 def dashboard():
-    if not current_session_id or current_session_id not in quiz_sessions:
+    """Quiz dashboard."""
+    # Clean up expired sessions first
+    cleanup_expired_sessions()
+    
+    print(f"Debug: Dashboard access - current_session_id = {current_session_id}")
+    print(f"Debug: Available sessions = {list(quiz_sessions.keys())}")
+    
+    if not current_session_id:
+        print("Debug: No current session ID")
+        return redirect(url_for('home'))
+    
+    if current_session_id not in quiz_sessions:
+        print(f"Debug: Session {current_session_id} not found in active sessions")
         return redirect(url_for('home'))
     
     session = quiz_sessions[current_session_id]
     active_quiz = session['active_quiz']
     current_question_index = session['current_question_index']
     
+    print(f"Debug: Session found - question_index = {current_question_index}, quiz_length = {len(active_quiz)}")
+    
     if current_question_index < 0 or current_question_index >= len(active_quiz):
+        print("Debug: Invalid question index")
         return redirect(url_for('home'))
     
     q = active_quiz[current_question_index]
@@ -412,25 +472,9 @@ def dashboard():
                            quiz=q, index=current_question_index,
                            total=len(active_quiz), current_set_id=session['current_set_id'])
 
-@app.route('/dashboard_realtime')
-def dashboard_realtime():
-    if not current_session_id or current_session_id not in quiz_sessions:
-        return redirect(url_for('home'))
-    
-    session = quiz_sessions[current_session_id]
-    active_quiz = session['active_quiz']
-    current_question_index = session['current_question_index']
-    
-    if current_question_index < 0 or current_question_index >= len(active_quiz):
-        return redirect(url_for('home'))
-    
-    q = active_quiz[current_question_index]
-    return render_template('dashboard_realtime.html',
-                           quiz=q, index=current_question_index,
-                           total=len(active_quiz), current_set_id=session['current_set_id'])
-
 @app.route('/next')
 def next_question():
+    """Move to next question."""
     if not current_session_id or current_session_id not in quiz_sessions:
         return redirect(url_for('home'))
     
@@ -444,55 +488,27 @@ def next_question():
 
 @app.route('/receive_data')
 def receive_data():
-    student = (request.args.get('student') or '').strip()
-    option = (request.args.get('option') or '').strip().upper()
-    
-    if not student or not option:
-        return jsonify({"error": "Missing student name or option"}), 400
-    
-    # Check if there's an active quiz session
-    if not current_session_id or current_session_id not in quiz_sessions:
-        return jsonify({"error": "No active quiz session. Please start a quiz first by visiting /start_quiz/<set_id>"}), 400
-    
-    session = quiz_sessions[current_session_id]
-    active_quiz = session['active_quiz']
-    current_question_index = session['current_question_index']
-    
-    if current_question_index < 0 or current_question_index >= len(active_quiz):
-        return jsonify({"error": "Invalid question index"}), 400
-    
-    question = active_quiz[current_question_index]
-    
-    # Check for duplicate responses
-    if student in sum(question['responses'].values(), []):
-        return jsonify({"error": "Student has already responded to this question"}), 400
-    
-    # Add response to in-memory state
-    question['responses'][option].append(student)
-    correct = option == question['correct']
-    if correct:
-        session['student_scores'][student] += 1
-    
-    # Persist response to Firestore
-    record_response(session['current_set_id'], question['id'], student, option, correct)
-    
-    # Return JSON response with embedded live response data
-    response_data = {
-        "student": student, 
-        "option": option, 
-        "correct": correct,
-        "timestamp": datetime.now().isoformat(),
-        "question_id": question['id'],
-        "question_text": question['question']
-    }
-    return jsonify(response_data), 200
-
-@app.route('/api/live_responses')
-def live_responses():
-    """API endpoint for polling live responses"""
+    """Receive student response data."""
     try:
+        tag_id = (request.args.get('tag_id') or '').strip()
+        student_name = (request.args.get('student') or '').strip()
+        option = (request.args.get('option') or '').strip().upper()
+        
+        # If tag_id is provided, use it to get/create student
+        if tag_id:
+            student = get_or_create_student(tag_id)
+        elif student_name:
+            # If student name is provided, create a student with that name
+            student = create_student_from_name(student_name)
+        else:
+            return jsonify({"error": "Missing tag_id or student name"}), 400
+        
+        if not option:
+            return jsonify({"error": "Missing option"}), 400
+        
+        # Check if there's an active quiz session
         if not current_session_id or current_session_id not in quiz_sessions:
-            return jsonify({"error": "No active quiz session"}), 400
+            return jsonify({"error": "No active quiz session. Please start a quiz first by visiting /start_quiz/<set_id>"}), 400
         
         session = quiz_sessions[current_session_id]
         active_quiz = session['active_quiz']
@@ -501,10 +517,63 @@ def live_responses():
         if current_question_index < 0 or current_question_index >= len(active_quiz):
             return jsonify({"error": "Invalid question index"}), 400
         
-        current_question = active_quiz[current_question_index]
-        question_id = current_question['id'] 
+        question = active_quiz[current_question_index]
         
-        # Get responses from in-memory state first (faster and more reliable)
+        # Check for duplicate responses
+        if student in sum(question['responses'].values(), []):
+            return jsonify({"error": "Student has already responded to this question"}), 400
+        
+        # Add response to in-memory state
+        question['responses'][option].append(student)
+        correct = option == question['correct']
+        if correct:
+            session['student_scores'][student] += 1
+        
+        # Persist response to Firestore
+        record_response(session['current_set_id'], question['id'], student, option, correct)
+        
+        # Return JSON response with embedded live response data
+        response_data = {
+            "student": student, 
+            "option": option, 
+            "correct": correct,
+            "timestamp": datetime.now().isoformat(),
+            "question_id": question['id'],
+            "question_text": question['question'],
+            "tag_id": tag_id if tag_id else None
+        }
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"Error in receive_data: {e}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+@app.route('/api/live_responses')
+def live_responses():
+    """API endpoint for polling live responses."""
+    try:
+        print(f"Debug: current_session_id = {current_session_id}")
+        print(f"Debug: quiz_sessions keys = {list(quiz_sessions.keys())}")
+        
+        if not current_session_id:
+            return jsonify({"error": "No active quiz session. Please start a quiz first."}), 400
+        
+        if current_session_id not in quiz_sessions:
+            return jsonify({"error": "Session expired. Please start a new quiz."}), 400
+        
+        session = quiz_sessions[current_session_id]
+        active_quiz = session['active_quiz']
+        current_question_index = session['current_question_index']
+        
+        print(f"Debug: current_question_index = {current_question_index}, quiz_length = {len(active_quiz)}")
+        
+        if current_question_index < 0 or current_question_index >= len(active_quiz):
+            return jsonify({"error": "Invalid question index"}), 400
+        
+        current_question = active_quiz[current_question_index]
+        question_id = current_question['id']
+        
+        # Get responses from in-memory state (faster and more reliable)
         responses = []
         for option, students in current_question['responses'].items():
             for student in students:
@@ -513,7 +582,7 @@ def live_responses():
                     "student": student,
                     "option": option,
                     "correct": correct,
-                    "timestamp": datetime.now().isoformat(),  # Use current time for display
+                    "timestamp": datetime.now().isoformat(),
                     "question_id": question_id,
                     "question_text": current_question['question']
                 })
@@ -521,75 +590,52 @@ def live_responses():
         # Sort by timestamp (most recent first)
         responses.sort(key=lambda x: x['timestamp'], reverse=True)
         
+        print(f"Debug: returning {len(responses)} responses")
+        
         return jsonify({
             "question_id": question_id,
             "question_text": current_question['question'],
-            "responses": responses
+            "responses": responses,
+            "session_id": current_session_id,
+            "question_index": current_question_index
         })
     except Exception as e:
         print(f"Error in live_responses: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
-@app.route('/api/live_responses_stream')
-def live_responses_stream():
-    """Server-Sent Events endpoint for real-time response updates"""
-    if not current_session_id or current_session_id not in quiz_sessions:
-        return jsonify({"error": "No active quiz session"}), 400
+@app.route('/students')
+def students_page():
+    """Students management page."""
+    students = get_all_students()
+    return render_template('students.html', students=students)
+
+@app.route('/api/students')
+def api_students():
+    """API endpoint to get all students."""
+    students = get_all_students()
+    return jsonify(students)
+
+@app.route('/api/update_student', methods=['POST'])
+def api_update_student():
+    """API endpoint to update student name."""
+    data = request.get_json()
+    student_id = data.get('id')
+    new_name = data.get('name', '').strip()
     
-    session = quiz_sessions[current_session_id]
-    active_quiz = session['active_quiz']
-    current_question_index = session['current_question_index']
+    if not student_id or not new_name:
+        return jsonify({"error": "Missing student ID or name"}), 400
     
-    if current_question_index < 0 or current_question_index >= len(active_quiz):
-        return jsonify({"error": "Invalid question index"}), 400
-    
-    current_question = active_quiz[current_question_index]
-    question_id = current_question['id']
-    
-    def generate():
-        # Send initial data
-        responses = get_recent_responses(session['current_set_id'], question_id)
-        for response in responses:
-            response['question_text'] = current_question['question']
-        
-        data = {
-            'question_id': question_id,
-            'question_text': current_question['question'],
-            'responses': responses
-        }
-        yield f"data: {json.dumps(data)}\n\n"
-          
-        # Set up Firestore real-time listener
-        def on_response_update(responses):
-            for response in responses:
-                response['question_text'] = current_question['question']
-            
-            data = {
-                'question_id': question_id,
-                'question_text': current_question['question'],
-                'responses': responses
-            }
-            yield f"data: {json.dumps(data)}\n\n"
-        
-        # Note: In a production environment, you'd want to properly manage
-        # the Firestore listener lifecycle and handle disconnections
-        listener = setup_firestore_realtime_listener(session['current_set_id'], question_id, on_response_update)
-        
-        try:
-            while True:
-                # Keep the connection alive
-                yield "data: {}\n\n"
-                import time
-                time.sleep(1)
-        except GeneratorExit:
-            # Clean up listener when client disconnects
-            if 'listener' in locals():
-                listener.unsubscribe()
-    
-    return Response(generate(), mimetype='text/event-stream')
+    try:
+        update_student_name(student_id, new_name)
+        return jsonify({"success": True, "message": "Student name updated successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to update student: {str(e)}"}), 500
 
 @app.route('/analysis')
 def analysis():
+    """Quiz analysis page."""
     if not current_session_id or current_session_id not in quiz_sessions:
         return redirect(url_for('home'))
 

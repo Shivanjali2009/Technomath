@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quiz Dashboard</title>
+    <title>Quiz Dashboard - TechnoMath</title>
     <!-- Material Design Lite CSS -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
     <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
@@ -15,83 +15,340 @@
         .mdl-card {
             width: 100%;
             margin-bottom: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
         }
         .mdl-card__title {
             color: #fff;
-            background-color: #3f51b5;
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%);
+            border-radius: 12px 12px 0 0;
+            padding: 24px;
+        }
+        .question-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .option-button {
             width: 100%;
-            margin: 8px 0;
+            margin: 12px 0;
             text-align: left;
+            padding: 20px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            font-size: 16px;
+            min-height: 70px;
+            display: flex;
+            align-items: center;
+            border: 2px solid transparent;
         }
-        .response-entry {
-            padding: 8px;
-            margin: 4px 0;
-            background: #f5f5f5;
-            border-radius: 4px;
+        .option-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        .option-button:active {
+            transform: translateY(-1px);
+        }
+        .response-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 12px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #e0e0e0;
+            transition: all 0.3s ease;
+            animation: slideInUp 0.4s ease-out;
+        }
+        .response-card:hover {
+            transform: translateX(8px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+        .response-card.correct {
+            border-left-color: #4CAF50;
+            background: linear-gradient(135deg, #f8fff8 0%, #e8f5e8 100%);
+        }
+        .response-card.incorrect {
+            border-left-color: #F44336;
+            background: linear-gradient(135deg, #fff8f8 0%, #ffe8e8 100%);
         }
         .correct {
             color: #4CAF50;
+            font-weight: 600;
         }
         .incorrect {
             color: #F44336;
+            font-weight: 600;
         }
+        .status-message {
+            font-weight: 500;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            padding: 16px;
+            text-align: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+        .status-message.success {
+            background: linear-gradient(135deg, #4CAF50, #66BB6A);
+            color: white;
+        }
+        .status-message.error {
+            background: linear-gradient(135deg, #F44336, #EF5350);
+            color: white;
+        }
+        .status-message.warning {
+            background: linear-gradient(135deg, #FF9800, #FFB74D);
+            color: white;
+        }
+        .status-message.info {
+            background: linear-gradient(135deg, #2196F3, #42A5F5);
+            color: white;
+        }
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .quiz-progress {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 16px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #ff7675, #fd79a8);
+            transition: width 0.5s ease;
+            border-radius: 6px;
+        }
+        .live-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #ff7675;
+            border-radius: 50%;
+            margin-right: 12px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .response-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            border-radius: 12px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 16px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ff7675;
+            margin-bottom: 4px;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 32px;
+        }
+        .action-buttons .mdl-button {
+            min-width: 140px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        .response-container {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        .response-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .response-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        .response-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        .response-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        .student-name {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .option-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+            margin-left: 8px;
+        }
+        .option-badge.A { background: #E3F2FD; color: #1976D2; }
+        .option-badge.B { background: #F3E5F5; color: #7B1FA2; }
+        .option-badge.C { background: #E8F5E8; color: #388E3C; }
+        .option-badge.D { background: #FFF3E0; color: #F57C00; }
     </style>
 </head>
 <body>
     <div class="mdl-layout mdl-js-layout mdl-layout--fixed-header">
         <header class="mdl-layout__header">
             <div class="mdl-layout__header-row">
-                <span class="mdl-layout-title">Quiz Dashboard</span>
+                <span class="mdl-layout-title">🎯 Quiz Dashboard</span>
                 <div class="mdl-layout-spacer"></div>
                 <a href="/" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
-                    Home
+                    🏠 Home
                 </a>
             </div>
         </header>
         <main class="mdl-layout__content">
-            <div class="mdl-card mdl-shadow--2dp">
+            <!-- Active Quiz Status -->
+            <div class="mdl-card" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); margin-bottom: 24px;">
+                <div class="mdl-card__supporting-text" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3 style="margin: 0; color: #fff; font-weight: 600;">🎯 Active Quiz Session</h3>
+                            <p style="margin: 8px 0 0 0; color: #fff; opacity: 0.9;">Session ID: {{ current_set_id }}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; color: #fff; font-weight: 600;">
+                                🔴 LIVE
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quiz Progress -->
+            <div class="quiz-progress">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="margin: 0; color: #333;">Question {{ index + 1 }} of {{ total }}</h3>
+                    <span style="color: #666; font-weight: 500;">{{ "%.1f"|format((index + 1) / total * 100) }}% Complete</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ (index + 1) / total * 100 }}%"></div>
+                </div>
+            </div>
+
+            <!-- Question Card -->
+            <div class="mdl-card question-card">
                 <div class="mdl-card__title">
-                    <h2 class="mdl-card__title-text">Question {{ index + 1 }} of {{ total }}</h2>
+                    <h2 class="mdl-card__title-text">📝 Question {{ index + 1 }}</h2>
                 </div>
                 <div class="mdl-card__supporting-text">
-                    <h4>{{ quiz.question }}</h4>
+                    <h4 style="margin: 0 0 32px 0; line-height: 1.6; color: #333;">{{ quiz.question }}</h4>
                     <div class="mdl-grid">
                         <div class="mdl-cell mdl-cell--6-col">
-                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" onclick="submitAnswer('A')">
-                                A. {{ quiz.options.A }}
+                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" 
+                                    onclick="submitAnswer('A')" 
+                                    style="background: linear-gradient(135deg, #E3F2FD, #BBDEFB); color: #1976D2; border-color: #1976D2;">
+                                <span style="font-weight: bold; margin-right: 16px; font-size: 18px;">A.</span>
+                                {{ quiz.options.A }}
                             </button>
-                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" onclick="submitAnswer('B')">
-                                B. {{ quiz.options.B }}
+                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" 
+                                    onclick="submitAnswer('B')" 
+                                    style="background: linear-gradient(135deg, #F3E5F5, #E1BEE7); color: #7B1FA2; border-color: #7B1FA2;">
+                                <span style="font-weight: bold; margin-right: 16px; font-size: 18px;">B.</span>
+                                {{ quiz.options.B }}
                             </button>
                         </div>
                         <div class="mdl-cell mdl-cell--6-col">
-                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" onclick="submitAnswer('C')">
-                                C. {{ quiz.options.C }}
+                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" 
+                                    onclick="submitAnswer('C')" 
+                                    style="background: linear-gradient(135deg, #E8F5E8, #C8E6C9); color: #388E3C; border-color: #388E3C;">
+                                <span style="font-weight: bold; margin-right: 16px; font-size: 18px;">C.</span>
+                                {{ quiz.options.C }}
                             </button>
-                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" onclick="submitAnswer('D')">
-                                D. {{ quiz.options.D }}
+                            <button class="mdl-button mdl-js-button mdl-button--raised option-button" 
+                                    onclick="submitAnswer('D')" 
+                                    style="background: linear-gradient(135deg, #FFF3E0, #FFE0B2); color: #F57C00; border-color: #F57C00;">
+                                <span style="font-weight: bold; margin-right: 16px; font-size: 18px;">D.</span>
+                                {{ quiz.options.D }}
                             </button>
                         </div>
                     </div>
                 </div>
-                <div class="mdl-card__actions mdl-card--border">
+                <div class="mdl-card__actions action-buttons">
                     <a href="/next" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
-                        Next Question
+                        ➡️ Next Question
                     </a>
                     <a href="/analysis" class="mdl-button mdl-js-button mdl-button--raised">
-                        View Analysis
+                        📊 View Analysis
                     </a>
                 </div>
             </div>
 
-            <div class="mdl-card mdl-shadow--2dp">
+            <!-- Live Responses -->
+            <div class="mdl-card">
                 <div class="mdl-card__title">
-                    <h2 class="mdl-card__title-text">Live Responses</h2>
+                    <h2 class="mdl-card__title-text">
+                        <span class="live-indicator"></span>
+                        🔴 Live Responses
+                    </h2>
                 </div>
-                <div class="mdl-card__supporting-text" id="responseContainer">
-                    <!-- Responses will be added here -->
+                <div class="mdl-card__supporting-text">
+                    <div id="statusMessage" class="status-message" style="display: none;"></div>
+                    
+                    <!-- Response Statistics -->
+                    <div class="response-stats">
+                        <div class="stat-item">
+                            <div class="stat-value" id="totalResponses">0</div>
+                            <div class="stat-label">Total Responses</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="correctResponses">0</div>
+                            <div class="stat-label">Correct</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="incorrectResponses">0</div>
+                            <div class="stat-label">Incorrect</div>
+                        </div>
+                    </div>
+                    
+                    <div class="response-container" id="responseContainer">
+                        <div class="response-card" style="text-align: center; color: #666; font-style: italic;">
+                            No responses yet. Be the first to answer! 🚀
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
@@ -100,67 +357,136 @@
     <script>
         let lastResponseCount = 0;
         let pollingInterval;
+        let retryCount = 0;
+        const maxRetries = 3;
+        let isPolling = false;
         
-        // Function to display responses
+        // Function to display responses with stable UI
         function displayResponses(responses) {
             const container = document.getElementById('responseContainer');
-            container.innerHTML = ''; // Clear existing responses
             
-            responses.forEach(data => {
-                const div = document.createElement('div');
-                div.className = 'response-entry';
-                div.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span class="${data.correct ? 'correct' : 'incorrect'}">
-                            📘 ${data.student} selected option ${data.option}
-                        </span>
-                        <small style="color: #666;">${new Date(data.timestamp).toLocaleTimeString()}</small>
-                    </div>
-                    <div style="font-size: 0.9em; color: #666; margin-top: 4px;">
-                        Q: ${data.question_text.substring(0, 50)}${data.question_text.length > 50 ? '...' : ''}
-                    </div>
-                `;
+            // Only update if we have new responses
+            if (responses.length === lastResponseCount) {
+                return;
+            }
+            
+            // Clear and rebuild with animation
+            container.innerHTML = '';
+            
+            if (responses.length === 0) {
+                container.innerHTML = '<div class="response-card" style="text-align: center; color: #666; font-style: italic;">No responses yet. Be the first to answer! 🚀</div>';
+                updateStats(0, 0, 0);
+                return;
+            }
+            
+            let correctCount = 0;
+            let incorrectCount = 0;
+            
+            responses.forEach((data, index) => {
+            const div = document.createElement('div');
+                div.className = `response-card ${data.correct ? 'correct' : 'incorrect'}`;
+                
+                if (data.correct) correctCount++;
+                else incorrectCount++;
+                
+            div.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <div>
+                    <span class="${data.correct ? 'correct' : 'incorrect'}">
+                                ${data.correct ? '✅' : '❌'} 
+                                <span class="student-name">${data.student}</span>
+                                <span class="option-badge ${data.option}">Option ${data.option}</span>
+                    </span>
+                        </div>
+                        <small style="color: #666; font-size: 12px;">${new Date(data.timestamp).toLocaleTimeString()}</small>
+                </div>
+                    <div style="font-size: 14px; color: #666; line-height: 1.4;">
+                        Q: ${data.question_text.substring(0, 60)}${data.question_text.length > 60 ? '...' : ''}
+                </div>
+            `;
+                
                 container.appendChild(div);
             });
+            
+            updateStats(responses.length, correctCount, incorrectCount);
+            lastResponseCount = responses.length;
         }
         
-        // Function to poll for live responses
+        // Update response statistics
+        function updateStats(total, correct, incorrect) {
+            document.getElementById('totalResponses').textContent = total;
+            document.getElementById('correctResponses').textContent = correct;
+            document.getElementById('incorrectResponses').textContent = incorrect;
+        }
+        
+        // Status message display
+        function showStatusMessage(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            if (!statusEl) return;
+            
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            statusEl.style.display = 'block';
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Enhanced polling function with better error handling
         function pollLiveResponses() {
+            if (isPolling) return; // Prevent overlapping requests
+            
+            isPolling = true;
+            
             fetch('/api/live_responses')
                 .then(response => {
                     if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
                     return response.json();
                 })
                 .then(data => {
+                    retryCount = 0; // Reset retry count on success
+                    
                     if (data.error) {
-                        console.error('Error fetching live responses:', data.error);
-                        // Show error in the response container
-                        const container = document.getElementById('responseContainer');
-                        container.innerHTML = `<div class="response-entry" style="color: #F44336;">Error: ${data.error}</div>`;
+                        console.warn('Server error:', data.error);
+                        showStatusMessage('Server error: ' + data.error, 'error');
                         return;
                     }
                     
-                    // Only update if we have new responses
-                    if (data.responses && data.responses.length !== lastResponseCount) {
+                    if (data.responses) {
                         displayResponses(data.responses);
-                        lastResponseCount = data.responses.length;
+                        // Only show status message if there are new responses
+                        if (data.responses.length > lastResponseCount) {
+                            showStatusMessage(`New response received! (${data.responses.length} total)`, 'success');
+                        }
                     }
                 })
                 .catch(error => {
-                    console.error('Error polling live responses:', error);
-                    // Show error in the response container
-                    const container = document.getElementById('responseContainer');
-                    container.innerHTML = `<div class="response-entry" style="color: #F44336;">Connection error: ${error.message}</div>`;
+                    console.error('Polling error:', error);
+                    retryCount++;
+                    
+                    if (retryCount <= maxRetries) {
+                        showStatusMessage(`Connection error, retrying... (${retryCount}/${maxRetries})`, 'warning');
+                        setTimeout(pollLiveResponses, 2000 * retryCount); // Exponential backoff
+                    } else {
+                        showStatusMessage('Connection failed. Please refresh the page.', 'error');
+                        stopPolling();
+                    }
+                })
+                .finally(() => {
+                    isPolling = false;
                 });
         }
         
-        // Start polling every 3 seconds
+        // Start polling every 3 seconds (stable updates)
         function startPolling() {
+            if (pollingInterval) return;
+            
             pollingInterval = setInterval(pollLiveResponses, 3000);
-            // Also poll immediately
-            pollLiveResponses();
+            pollLiveResponses(); // Immediate first poll
+            showStatusMessage('Live polling started', 'success');
         }
         
         // Stop polling
@@ -168,39 +494,54 @@
             if (pollingInterval) {
                 clearInterval(pollingInterval);
                 pollingInterval = null;
+                showStatusMessage('Live polling stopped', 'info');
             }
         }
         
-        // Start polling when page loads
+        // Enhanced submit function
+        function submitAnswer(option) {
+            const student = prompt('Enter your name:');
+            if (!student || student.trim() === '') {
+                return;
+            }
+            
+            showStatusMessage('Submitting response...', 'info');
+            
+            fetch(`/receive_data?student=${encodeURIComponent(student.trim())}&option=${option}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                        showStatusMessage('Error: ' + data.error, 'error');
+                        } else {
+                        showStatusMessage('Response submitted successfully!', 'success');
+                        // Immediately poll for updated responses
+                        setTimeout(pollLiveResponses, 1000);
+                        }
+                    })
+                    .catch(error => {
+                    console.error('Submit error:', error);
+                    showStatusMessage('Error submitting response', 'error');
+                });
+        }
+        
+        // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
             startPolling();
         });
         
-        // Stop polling when page unloads
+        // Cleanup when page unloads
         window.addEventListener('beforeunload', function() {
             stopPolling();
         });
-
-        function submitAnswer(option) {
-            const student = prompt('Enter your name:');
-            if (student) {
-                fetch(`/receive_data?student=${encodeURIComponent(student)}&option=${option}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            alert('Error: ' + data.error);
-                        } else {
-                            // Immediately poll for updated responses
-                            setTimeout(pollLiveResponses, 500);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Error submitting response');
-                    });
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopPolling();
+            } else {
+                startPolling();
             }
-        }
+        });
     </script>
 </body>
 </html>
-

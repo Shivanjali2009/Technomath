@@ -29,26 +29,10 @@ bool displayingStudent = false;
 const unsigned long CARD_READ_COOLDOWN = 2000;  // 2 seconds between reads
 const unsigned long DISPLAY_TIMEOUT = 5000;     // 5 seconds display time
 
-// ---------- Student Database ----------
-struct Student {
-  String tagID;
-  String name;
-};
+// ---------- Student Management ----------
+// No hardcoded students - all managed by Firebase
 
-const Student students[] = {
-  {"b358f627", "Student 01"},
-  {"f3c7ece1", "Student 02"},
-  {"13dadcd9", "Student 03"},
-  {"b3b27bda", "Student 04"},
-  {"0e317ee2", "Student 05"},
-  {"bc8e973f", "Student 06"},
-  {"0684973f", "Student 07"},
-  {"051973f0", "Student 08"},
-  {"0b325a14", "Student 09"},
-  {"c5d0963f", "Student 10"}
-};
-
-const int STUDENT_COUNT = sizeof(students) / sizeof(students[0]);
+// Removed hardcoded student count
 
 // ---------- Utility Functions ----------
 String readTagID() {
@@ -61,14 +45,7 @@ String readTagID() {
   return tagID;
 }
 
-String getStudentName(const String& tagID) {
-  for (int i = 0; i < STUDENT_COUNT; i++) {
-    if (students[i].tagID == tagID) {
-      return students[i].name;
-    }
-  }
-  return "Unknown";
-}
+// Removed getStudentName - students are managed by Firebase
 
 String urlEncode(const String& str) {
   String encoded = "";
@@ -100,7 +77,7 @@ void displayError(const String& error) {
 }
 
 // ---------- Network Functions ----------
-bool sendToServer(const String& studentName, const String& option) {
+bool sendToServer(const String& tagID, const String& option) {
   if (WiFi.status() != WL_CONNECTED) {
     displayError("WiFi Disconnected");
     return false;
@@ -111,7 +88,7 @@ bool sendToServer(const String& studentName, const String& option) {
   http.setInsecure();      // Skip SSL certificate verification for simplicity
   
   String url = String(serverURL) + 
-               "?student=" + urlEncode(studentName) + 
+               "?tag_id=" + urlEncode(tagID) + 
                "&option=" + urlEncode(option);
   
   Serial.println("Sending to: " + url);
@@ -125,7 +102,7 @@ bool sendToServer(const String& studentName, const String& option) {
     Serial.println("Response: " + response);
     
     if (httpCode == 200) {
-      displayMessage("Success!", studentName);
+      displayMessage("Success!", "Tag: " + tagID);
       http.end();
       return true;
     } else {
@@ -200,21 +177,15 @@ void loop() {
     
     lastCardRead = currentTime;
     String tagID = readTagID();
-    String studentName = getStudentName(tagID);
     
-    Serial.println("Card detected: " + tagID + " → " + studentName);
+    Serial.println("Card detected: " + tagID);
     
-    if (studentName == "Unknown") {
-      displayMessage("Unknown Card", tagID);
-      Serial.println("Unknown card: " + tagID);
-    } else {
-      displayMessage("Processing...", studentName);
-      bool success = sendToServer(studentName, assignedOption);
-      
-      if (success) {
-        lastDisplayTime = currentTime;
-        displayingStudent = true;
-      }
+    displayMessage("Processing...", "Tag: " + tagID);
+    bool success = sendToServer(tagID, assignedOption);
+    
+    if (success) {
+      lastDisplayTime = currentTime;
+      displayingStudent = true;
     }
     
     // Clean up RFID
