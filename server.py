@@ -490,44 +490,97 @@ def next_question():
 def receive_data():
     """Receive student response data."""
     try:
-        tag_id = (request.args.get('tag_id') or '').strip()
-        student_name = (request.args.get('student') or '').strip()
-        option = (request.args.get('option') or '').strip().upper()
+        # Get raw parameters for debugging
+        raw_tag_id = request.args.get('tag_id', '')
+        raw_student = request.args.get('student', '')
+        raw_option = request.args.get('option', '')
+        
+        print(f"🔍 Raw parameters received:")
+        print(f"  - tag_id: '{raw_tag_id}'")
+        print(f"  - student: '{raw_student}'")
+        print(f"  - option: '{raw_option}'")
+        
+        # Process parameters
+        tag_id = raw_tag_id.strip()
+        student_name = raw_student.strip()
+        option = raw_option.strip().upper()
+        
+        print(f"🔍 Processed parameters:")
+        print(f"  - tag_id: '{tag_id}'")
+        print(f"  - student_name: '{student_name}'")
+        print(f"  - option: '{option}'")
         
         # If tag_id is provided, use it to get/create student
         if tag_id:
             student = get_or_create_student(tag_id)
+            print(f"👤 Student from tag_id: '{student}'")
         elif student_name:
             # If student name is provided, create a student with that name
             student = create_student_from_name(student_name)
+            print(f"👤 Student from name: '{student}'")
         else:
+            print("❌ No tag_id or student name provided")
             return jsonify({"error": "Missing tag_id or student name"}), 400
         
         if not option:
+            print("❌ No option provided")
             return jsonify({"error": "Missing option"}), 400
         
         # Check if there's an active quiz session
         if not current_session_id or current_session_id not in quiz_sessions:
+            print(f"❌ No active session. current_session_id: {current_session_id}")
             return jsonify({"error": "No active quiz session. Please start a quiz first by visiting /start_quiz/<set_id>"}), 400
         
         session = quiz_sessions[current_session_id]
         active_quiz = session['active_quiz']
         current_question_index = session['current_question_index']
         
+        print(f"📊 Session info:")
+        print(f"  - current_question_index: {current_question_index}")
+        print(f"  - quiz_length: {len(active_quiz)}")
+        
         if current_question_index < 0 or current_question_index >= len(active_quiz):
+            print("❌ Invalid question index")
             return jsonify({"error": "Invalid question index"}), 400
         
         question = active_quiz[current_question_index]
         
+        print(f"📝 Question info:")
+        print(f"  - question_id: {question['id']}")
+        print(f"  - question_text: {question['question']}")
+        print(f"  - correct_answer: {question['correct']}")
+        print(f"  - available_options: {list(question['options'].keys())}")
+        
         # Check for duplicate responses
-        if student in sum(question['responses'].values(), []):
+        all_responses = sum(question['responses'].values(), [])
+        if student in all_responses:
+            print(f"⚠️ Student '{student}' already responded to this question")
             return jsonify({"error": "Student has already responded to this question"}), 400
+        
+        # Validate option
+        print(f"🔍 Option validation:")
+        print(f"  - received option: '{option}' (type: {type(option)})")
+        print(f"  - question options: {question['options']}")
+        print(f"  - option keys: {list(question['options'].keys())}")
+        print(f"  - option in keys: {option in question['options']}")
+        
+        if option not in question['options']:
+            print(f"❌ Invalid option '{option}'. Valid options: {list(question['options'].keys())}")
+            return jsonify({"error": f"Invalid option '{option}'. Valid options are: {', '.join(question['options'].keys())}"}), 400
         
         # Add response to in-memory state
         question['responses'][option].append(student)
         correct = option == question['correct']
+        
+        print(f"✅ Response added:")
+        print(f"  - student: '{student}'")
+        print(f"  - option: '{option}'")
+        print(f"  - correct: {correct}")
+        print(f"  - correct_answer: '{question['correct']}'")
+        
         if correct:
             session['student_scores'][student] += 1
+            print(f"🎯 Student '{student}' got it right! Score: {session['student_scores'][student]}")
         
         # Persist response to Firestore
         record_response(session['current_set_id'], question['id'], student, option, correct)
@@ -542,18 +595,22 @@ def receive_data():
             "question_text": question['question'],
             "tag_id": tag_id if tag_id else None
         }
+        
+        print(f"📤 Returning response: {response_data}")
         return jsonify(response_data), 200
         
     except Exception as e:
-        print(f"Error in receive_data: {e}")
+        print(f"❌ Error in receive_data: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/api/live_responses')
 def live_responses():
-    """API endpoint for polling live responses."""
+    """API endpoint for getting live responses from Firestore."""
     try:
-        print(f"Debug: current_session_id = {current_session_id}")
-        print(f"Debug: quiz_sessions keys = {list(quiz_sessions.keys())}")
+        print(f"🔍 Debug: current_session_id = {current_session_id}")
+        print(f"🔍 Debug: quiz_sessions keys = {list(quiz_sessions.keys())}")
         
         if not current_session_id:
             return jsonify({"error": "No active quiz session. Please start a quiz first."}), 400
@@ -562,10 +619,11 @@ def live_responses():
             return jsonify({"error": "Session expired. Please start a new quiz."}), 400
         
         session = quiz_sessions[current_session_id]
+        current_set_id = session['current_set_id']
         active_quiz = session['active_quiz']
         current_question_index = session['current_question_index']
         
-        print(f"Debug: current_question_index = {current_question_index}, quiz_length = {len(active_quiz)}")
+        print(f"🔍 Debug: current_question_index = {current_question_index}, quiz_length = {len(active_quiz)}")
         
         if current_question_index < 0 or current_question_index >= len(active_quiz):
             return jsonify({"error": "Invalid question index"}), 400
@@ -573,34 +631,43 @@ def live_responses():
         current_question = active_quiz[current_question_index]
         question_id = current_question['id']
         
-        # Get responses from in-memory state (faster and more reliable)
+        # Get responses from in-memory state (more reliable and faster)
+        print(f"🔍 Getting responses from in-memory state:")
+        print(f"  - question responses: {current_question['responses']}")
+        
         responses = []
         for option, students in current_question['responses'].items():
             for student in students:
                 correct = option == current_question['correct']
-                responses.append({
+                response_data = {
                     "student": student,
                     "option": option,
                     "correct": correct,
                     "timestamp": datetime.now().isoformat(),
                     "question_id": question_id,
-                    "question_text": current_question['question']
-                })
+                    "question_text": current_question['question'],
+                    "response_id": f"{student}_{option}_{question_id}"  # Generate unique ID
+                }
+                responses.append(response_data)
+                print(f"  - Added response: {student} -> {option} ({'✅' if correct else '❌'})")
         
         # Sort by timestamp (most recent first)
         responses.sort(key=lambda x: x['timestamp'], reverse=True)
         
-        print(f"Debug: returning {len(responses)} responses")
+        print(f"📊 Live responses for question {current_question_index + 1}: {len(responses)} responses")
+        for resp in responses:
+            print(f"  - {resp['student']}: {resp['option']} ({'✅' if resp['correct'] else '❌'}) at {resp['timestamp']}")
         
         return jsonify({
             "question_id": question_id,
             "question_text": current_question['question'],
             "responses": responses,
             "session_id": current_session_id,
-            "question_index": current_question_index
+            "question_index": current_question_index,
+            "total_responses": len(responses)
         })
     except Exception as e:
-        print(f"Error in live_responses: {e}")
+        print(f"❌ Error in live_responses: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Server error: {str(e)}"}), 500

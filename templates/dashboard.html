@@ -355,25 +355,73 @@
     </div>
 
     <script>
-        let lastResponseCount = 0;
+        let allResponses = new Map(); // Store all responses with unique IDs
+        let lastQuestionId = null;
         let pollingInterval;
         let retryCount = 0;
         const maxRetries = 3;
         let isPolling = false;
         
-        // Function to display responses with stable UI
-        function displayResponses(responses) {
+        // Load responses from localStorage on page load
+        function loadStoredResponses() {
+            const stored = localStorage.getItem('quiz_responses');
+            if (stored) {
+                try {
+                    const data = JSON.parse(stored);
+                    allResponses = new Map(data.responses || []);
+                    lastQuestionId = data.questionId || null;
+                    console.log('📦 Loaded stored responses:', allResponses.size);
+                } catch (e) {
+                    console.error('Error loading stored responses:', e);
+                }
+            }
+        }
+
+        // Save responses to localStorage
+        function saveResponses() {
+            const data = {
+                responses: Array.from(allResponses.entries()),
+                questionId: lastQuestionId,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('quiz_responses', JSON.stringify(data));
+        }
+
+        // Function to display responses with stable UI and localStorage
+        function displayResponses(responses, questionId) {
             const container = document.getElementById('responseContainer');
             
-            // Only update if we have new responses
-            if (responses.length === lastResponseCount) {
+            // Check if this is a new question
+            if (questionId && questionId !== lastQuestionId) {
+                console.log('🔄 New question detected, clearing old responses');
+                allResponses.clear();
+                lastQuestionId = questionId;
+            }
+            
+            // Add new responses to our map (prevents duplicates)
+            let newResponsesCount = 0;
+            responses.forEach(response => {
+                const responseId = response.response_id || `${response.student}_${response.timestamp}`;
+                if (!allResponses.has(responseId)) {
+                    allResponses.set(responseId, response);
+                    newResponsesCount++;
+                    console.log('➕ New response:', response.student, response.option);
+                }
+            });
+            
+            // Only update UI if we have new responses
+            if (newResponsesCount === 0 && allResponses.size > 0) {
                 return;
             }
+            
+            // Convert map to array and sort by timestamp
+            const allResponsesArray = Array.from(allResponses.values())
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             // Clear and rebuild with animation
             container.innerHTML = '';
             
-            if (responses.length === 0) {
+            if (allResponsesArray.length === 0) {
                 container.innerHTML = '<div class="response-card" style="text-align: center; color: #666; font-style: italic;">No responses yet. Be the first to answer! 🚀</div>';
                 updateStats(0, 0, 0);
                 return;
@@ -382,34 +430,38 @@
             let correctCount = 0;
             let incorrectCount = 0;
             
-            responses.forEach((data, index) => {
-            const div = document.createElement('div');
+            allResponsesArray.forEach((data, index) => {
+                const div = document.createElement('div');
                 div.className = `response-card ${data.correct ? 'correct' : 'incorrect'}`;
                 
                 if (data.correct) correctCount++;
                 else incorrectCount++;
                 
-            div.innerHTML = `
+                div.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <div>
-                    <span class="${data.correct ? 'correct' : 'incorrect'}">
+                            <span class="${data.correct ? 'correct' : 'incorrect'}">
                                 ${data.correct ? '✅' : '❌'} 
                                 <span class="student-name">${data.student}</span>
                                 <span class="option-badge ${data.option}">Option ${data.option}</span>
-                    </span>
+                            </span>
                         </div>
                         <small style="color: #666; font-size: 12px;">${new Date(data.timestamp).toLocaleTimeString()}</small>
-                </div>
+                    </div>
                     <div style="font-size: 14px; color: #666; line-height: 1.4;">
                         Q: ${data.question_text.substring(0, 60)}${data.question_text.length > 60 ? '...' : ''}
-                </div>
-            `;
+                    </div>
+                `;
                 
                 container.appendChild(div);
             });
             
-            updateStats(responses.length, correctCount, incorrectCount);
-            lastResponseCount = responses.length;
+            updateStats(allResponsesArray.length, correctCount, incorrectCount);
+            
+            // Save to localStorage
+            saveResponses();
+            
+            console.log(`📊 Displayed ${allResponsesArray.length} responses (${correctCount} correct, ${incorrectCount} incorrect)`);
         }
         
         // Update response statistics
@@ -433,7 +485,7 @@
             }, 3000);
         }
         
-        // Enhanced polling function with better error handling
+        // Enhanced polling function with better error handling and localStorage
         function pollLiveResponses() {
             if (isPolling) return; // Prevent overlapping requests
             
@@ -448,6 +500,7 @@
                 })
                 .then(data => {
                     retryCount = 0; // Reset retry count on success
+                    isPolling = false;
                     
                     if (data.error) {
                         console.warn('Server error:', data.error);
@@ -456,15 +509,16 @@
                     }
                     
                     if (data.responses) {
-                        displayResponses(data.responses);
+                        displayResponses(data.responses, data.question_id);
                         // Only show status message if there are new responses
-                        if (data.responses.length > lastResponseCount) {
-                            showStatusMessage(`New response received! (${data.responses.length} total)`, 'success');
+                        if (data.responses.length > 0) {
+                            showStatusMessage(`Live responses updated (${data.responses.length} new)`, 'success');
                         }
                     }
                 })
                 .catch(error => {
                     console.error('Polling error:', error);
+                    isPolling = false;
                     retryCount++;
                     
                     if (retryCount <= maxRetries) {
@@ -526,6 +580,7 @@
         
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
+            loadStoredResponses(); // Load responses from localStorage
             startPolling();
         });
         
