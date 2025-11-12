@@ -368,12 +368,20 @@
             if (stored) {
                 try {
                     const data = JSON.parse(stored);
-                    allResponses = new Map(data.responses || []);
+                    // Check if stored data is for current question (we'll check this after first poll)
+                    const storedResponses = data.responses || [];
+                    allResponses = new Map(storedResponses);
                     lastQuestionId = data.questionId || null;
                     console.log('📦 Loaded stored responses:', allResponses.size);
+                    
+                    // Render stored responses immediately
+                    renderStoredResponses();
                 } catch (e) {
                     console.error('Error loading stored responses:', e);
+                    allResponses = new Map();
                 }
+            } else {
+                allResponses = new Map();
             }
         }
 
@@ -387,7 +395,33 @@
             localStorage.setItem('quiz_responses', JSON.stringify(data));
         }
 
-        // Function to display responses with stable UI and localStorage
+        // Function to render a single response card
+        function createResponseCard(data) {
+            const div = document.createElement('div');
+            div.className = `response-card ${data.correct ? 'correct' : 'incorrect'}`;
+            div.setAttribute('data-response-id', data.response_id || `${data.student}_${data.timestamp}`);
+            div.style.animation = 'slideInUp 0.4s ease-out';
+            
+            div.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div>
+                        <span class="${data.correct ? 'correct' : 'incorrect'}">
+                            ${data.correct ? '✅' : '❌'} 
+                            <span class="student-name">${data.student}</span>
+                            <span class="option-badge ${data.option}">Option ${data.option}</span>
+                        </span>
+                    </div>
+                    <small style="color: #666; font-size: 12px;">${new Date(data.timestamp).toLocaleTimeString()}</small>
+                </div>
+                <div style="font-size: 14px; color: #666; line-height: 1.4;">
+                    Q: ${data.question_text.substring(0, 60)}${data.question_text.length > 60 ? '...' : ''}
+                </div>
+            `;
+            
+            return div;
+        }
+
+        // Function to display responses with stable UI and localStorage - only append new ones
         function displayResponses(responses, questionId) {
             const container = document.getElementById('responseContainer');
             
@@ -395,73 +429,109 @@
             if (questionId && questionId !== lastQuestionId) {
                 console.log('🔄 New question detected, clearing old responses');
                 allResponses.clear();
+                container.innerHTML = '';
                 lastQuestionId = questionId;
+                // Clear localStorage for new question
+                localStorage.removeItem('quiz_responses');
             }
             
             // Add new responses to our map (prevents duplicates)
             let newResponsesCount = 0;
+            const newResponses = [];
+            
             responses.forEach(response => {
-                const responseId = response.response_id || `${response.student}_${response.timestamp}`;
+                const responseId = response.response_id || `${response.student}_${response.option}_${response.question_id}_${response.timestamp}`;
                 if (!allResponses.has(responseId)) {
                     allResponses.set(responseId, response);
+                    newResponses.push(response);
                     newResponsesCount++;
                     console.log('➕ New response:', response.student, response.option);
                 }
             });
             
+            // Check if container is empty (no responses displayed yet)
+            const isEmpty = container.children.length === 0 || 
+                           (container.children.length === 1 && container.querySelector('.no-responses-msg'));
+            
+            // If container is empty and we have responses (either new or from map), render all
+            if (isEmpty && allResponses.size > 0) {
+                console.log('📦 Container is empty, rendering all responses from map');
+                renderStoredResponses();
+                return;
+            }
+            
             // Only update UI if we have new responses
-            if (newResponsesCount === 0 && allResponses.size > 0) {
+            if (newResponsesCount === 0) {
+                // No new responses, just update stats from existing data
+                updateStatsFromStored();
                 return;
             }
             
-            // Convert map to array and sort by timestamp
-            const allResponsesArray = Array.from(allResponses.values())
-                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-            
-            // Clear and rebuild with animation
-            container.innerHTML = '';
-            
-            if (allResponsesArray.length === 0) {
-                container.innerHTML = '<div class="response-card" style="text-align: center; color: #666; font-style: italic;">No responses yet. Be the first to answer! 🚀</div>';
-                updateStats(0, 0, 0);
-                return;
+            // Remove "no responses" message if it exists
+            const noResponseMsg = container.querySelector('.no-responses-msg');
+            if (noResponseMsg) {
+                noResponseMsg.remove();
             }
             
-            let correctCount = 0;
-            let incorrectCount = 0;
+            // Sort new responses by timestamp (most recent first) to maintain order
+            newResponses.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
-            allResponsesArray.forEach((data, index) => {
-                const div = document.createElement('div');
-                div.className = `response-card ${data.correct ? 'correct' : 'incorrect'}`;
-                
-                if (data.correct) correctCount++;
-                else incorrectCount++;
-                
-                div.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <div>
-                            <span class="${data.correct ? 'correct' : 'incorrect'}">
-                                ${data.correct ? '✅' : '❌'} 
-                                <span class="student-name">${data.student}</span>
-                                <span class="option-badge ${data.option}">Option ${data.option}</span>
-                            </span>
-                        </div>
-                        <small style="color: #666; font-size: 12px;">${new Date(data.timestamp).toLocaleTimeString()}</small>
-                    </div>
-                    <div style="font-size: 14px; color: #666; line-height: 1.4;">
-                        Q: ${data.question_text.substring(0, 60)}${data.question_text.length > 60 ? '...' : ''}
-                    </div>
-                `;
-                
-                container.appendChild(div);
-            });
-            
-            updateStats(allResponsesArray.length, correctCount, incorrectCount);
+            // Append only new responses to the container (no clearing/rebuilding)
+            // Insert at the top (most recent first), but we need to insert in reverse order
+            // to maintain chronological order since insertBefore adds before the first child
+            for (let i = newResponses.length - 1; i >= 0; i--) {
+                const card = createResponseCard(newResponses[i]);
+                container.insertBefore(card, container.firstChild);
+            }
             
             // Save to localStorage
             saveResponses();
             
-            console.log(`📊 Displayed ${allResponsesArray.length} responses (${correctCount} correct, ${incorrectCount} incorrect)`);
+            // Update stats
+            updateStatsFromStored();
+            
+            console.log(`➕ Added ${newResponsesCount} new responses. Total: ${allResponses.size}`);
+        }
+        
+        // Function to update stats from stored responses
+        function updateStatsFromStored() {
+            const allResponsesArray = Array.from(allResponses.values());
+            let correctCount = 0;
+            let incorrectCount = 0;
+            
+            allResponsesArray.forEach(data => {
+                if (data.correct) correctCount++;
+                else incorrectCount++;
+            });
+            
+            updateStats(allResponsesArray.length, correctCount, incorrectCount);
+        }
+        
+        // Function to render all stored responses on page load
+        function renderStoredResponses() {
+            const container = document.getElementById('responseContainer');
+            
+            if (allResponses.size === 0) {
+                container.innerHTML = '<div class="response-card no-responses-msg" style="text-align: center; color: #666; font-style: italic;">No responses yet. Be the first to answer! 🚀</div>';
+                updateStats(0, 0, 0);
+                return;
+            }
+            
+            // Convert map to array and sort by timestamp (most recent first)
+            const allResponsesArray = Array.from(allResponses.values())
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            // Clear container and render all stored responses
+            container.innerHTML = '';
+            
+            allResponsesArray.forEach((data) => {
+                const card = createResponseCard(data);
+                container.appendChild(card);
+            });
+            
+            updateStatsFromStored();
+            
+            console.log(`📦 Rendered ${allResponsesArray.length} stored responses from localStorage`);
         }
         
         // Update response statistics
@@ -509,11 +579,39 @@
                     }
                     
                     if (data.responses) {
-                        displayResponses(data.responses, data.question_id);
-                        // Only show status message if there are new responses
-                        if (data.responses.length > 0) {
-                            showStatusMessage(`Live responses updated (${data.responses.length} new)`, 'success');
+                        // Check if question changed
+                        if (data.question_id && data.question_id !== lastQuestionId) {
+                            // New question - clear everything
+                            console.log('🔄 Question changed from', lastQuestionId, 'to', data.question_id);
+                            allResponses.clear();
+                            lastQuestionId = data.question_id;
+                            const container = document.getElementById('responseContainer');
+                            container.innerHTML = '';
+                            localStorage.removeItem('quiz_responses');
+                        } else if (data.question_id && !lastQuestionId) {
+                            // First poll - set question_id
+                            lastQuestionId = data.question_id;
+                            // Validate stored responses match current question
+                            const stored = localStorage.getItem('quiz_responses');
+                            if (stored) {
+                                try {
+                                    const storedData = JSON.parse(stored);
+                                    if (storedData.questionId !== data.question_id) {
+                                        // Stored responses are for a different question - clear them
+                                        console.log('🔄 Stored responses are for different question, clearing');
+                                        allResponses.clear();
+                                        localStorage.removeItem('quiz_responses');
+                                        const container = document.getElementById('responseContainer');
+                                        container.innerHTML = '';
+                                        // displayResponses will handle rendering the new responses
+                                    }
+                                } catch (e) {
+                                    console.error('Error validating stored responses:', e);
+                                }
+                            }
                         }
+                        
+                        displayResponses(data.responses, data.question_id);
                     }
                 })
                 .catch(error => {
@@ -534,13 +632,13 @@
                 });
         }
         
-        // Start polling every 3 seconds (stable updates)
+        // Start polling every 1 second (backend polling)
         function startPolling() {
             if (pollingInterval) return;
             
-            pollingInterval = setInterval(pollLiveResponses, 3000);
+            pollingInterval = setInterval(pollLiveResponses, 1000); // Poll every 1 second
             pollLiveResponses(); // Immediate first poll
-            showStatusMessage('Live polling started', 'success');
+            console.log('🔄 Live polling started (1 second interval)');
         }
         
         // Stop polling

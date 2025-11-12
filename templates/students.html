@@ -148,8 +148,15 @@
 
             <!-- Students List -->
             <div class="mdl-card">
-                <div class="mdl-card__title">
+                <div class="mdl-card__title" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2 class="mdl-card__title-text">📚 Registered Students</h2>
+                    {% if students %}
+                    <button class="mdl-button mdl-js-button mdl-button--raised" 
+                            onclick="clearAllStudents()"
+                            style="background: #F44336; color: white; margin-left: 16px;">
+                        🗑️ Clear All
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="mdl-card__supporting-text">
                     {% if students %}
@@ -169,6 +176,11 @@
                                 <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored" 
                                         onclick="editStudent('{{ student.id }}', '{{ student.name }}')">
                                     ✏️ Edit Name
+                                </button>
+                                <button class="mdl-button mdl-js-button mdl-button--raised" 
+                                        onclick="deleteStudent('{{ student.id }}', '{{ student.name }}')"
+                                        style="background: #F44336; color: white;">
+                                    🗑️ Delete
                                 </button>
                             </div>
                             
@@ -289,6 +301,112 @@
                 console.error('Error:', error);
                 showStatusMessage('Error updating student name', 'error');
             });
+        }
+
+        function deleteStudent(studentId, studentName) {
+            // Show confirmation dialog
+            const confirmed = confirm(`Are you sure you want to delete "${studentName}"?\n\nThis action cannot be undone and will remove the student from Firebase.`);
+            
+            if (!confirmed) {
+                return;
+            }
+            
+            // Show loading
+            showStatusMessage('Deleting student...', 'info');
+            
+            fetch('/api/delete_student', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    id: studentId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Remove the student card from the UI
+                    const studentCard = document.querySelector(`[data-student-id="${studentId}"]`);
+                    if (studentCard) {
+                        studentCard.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+                        studentCard.style.opacity = '0';
+                        studentCard.style.transform = 'translateX(-100px)';
+                        setTimeout(() => {
+                            studentCard.remove();
+                            // Update stats
+                            updateStudentCounts();
+                            // Check if no students left
+                            const remainingStudents = document.querySelectorAll('.student-card').length;
+                            if (remainingStudents === 0) {
+                                location.reload(); // Reload to show empty state
+                            }
+                        }, 300);
+                    }
+                    showStatusMessage(`Student "${studentName}" deleted successfully!`, 'success');
+                } else {
+                    showStatusMessage('Error: ' + (data.error || 'Failed to delete student'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showStatusMessage('Error deleting student', 'error');
+            });
+        }
+
+        function clearAllStudents() {
+            const studentCount = document.querySelectorAll('.student-card').length;
+            
+            if (studentCount === 0) {
+                showStatusMessage('No students to delete', 'error');
+                return;
+            }
+            
+            // Show confirmation dialog
+            const confirmed = confirm(`⚠️ WARNING: Are you sure you want to delete ALL ${studentCount} students?\n\nThis action cannot be undone and will permanently remove all students from Firebase.`);
+            
+            if (!confirmed) {
+                return;
+            }
+            
+            // Double confirmation for safety
+            const doubleConfirmed = confirm(`This is your last chance!\n\nYou are about to delete ALL ${studentCount} students permanently.\n\nClick OK to proceed or Cancel to abort.`);
+            
+            if (!doubleConfirmed) {
+                return;
+            }
+            
+            // Show loading
+            showStatusMessage('Deleting all students...', 'info');
+            
+            fetch('/api/delete_all_students', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatusMessage(data.message || 'All students deleted successfully!', 'success');
+                    // Reload page after a short delay to show empty state
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showStatusMessage('Error: ' + (data.error || 'Failed to delete all students'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showStatusMessage('Error deleting all students', 'error');
+            });
+        }
+
+        function updateStudentCounts() {
+            const studentCount = document.querySelectorAll('.student-card').length;
+            document.getElementById('totalStudents').textContent = studentCount;
+            document.getElementById('activeStudents').textContent = studentCount;
         }
 
 

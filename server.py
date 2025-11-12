@@ -9,7 +9,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import firebase_admin
 from firebase_admin import credentials, firestore
 from flask_cors import CORS
-
+  
 _db = None
 
 def _load_firebase_creds():
@@ -208,6 +208,26 @@ def update_student_name(student_id, new_name):
         "name": new_name,
         "updated_at": firestore.SERVER_TIMESTAMP
     })
+
+def delete_student(student_id):
+    """Delete a student from Firestore."""
+    db = get_db()
+    db.collection("students").document(student_id).delete()
+
+def delete_all_students():
+    """Delete all students from Firestore."""
+    db = get_db()
+    students_ref = db.collection("students")
+    batch = db.batch()
+    count = 0
+    for doc in students_ref.stream():
+        batch.delete(doc.reference)
+        count += 1
+        if count % 400 == 0:
+            batch.commit()
+            batch = db.batch()
+    batch.commit()
+    return count
 
 def create_student_from_name(student_name):
     """Create a student from a provided name (for manual API calls)."""
@@ -699,6 +719,30 @@ def api_update_student():
         return jsonify({"success": True, "message": "Student name updated successfully"})
     except Exception as e:
         return jsonify({"error": f"Failed to update student: {str(e)}"}), 500
+
+@app.route('/api/delete_student', methods=['POST'])
+def api_delete_student():
+    """API endpoint to delete a student."""
+    data = request.get_json()
+    student_id = data.get('id')
+    
+    if not student_id:
+        return jsonify({"error": "Missing student ID"}), 400
+    
+    try:
+        delete_student(student_id)
+        return jsonify({"success": True, "message": "Student deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete student: {str(e)}"}), 500
+
+@app.route('/api/delete_all_students', methods=['POST'])
+def api_delete_all_students():
+    """API endpoint to delete all students."""
+    try:
+        count = delete_all_students()
+        return jsonify({"success": True, "message": f"Successfully deleted {count} students"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete all students: {str(e)}"}), 500
 
 @app.route('/analysis')
 def analysis():
