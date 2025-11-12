@@ -368,14 +368,25 @@
             if (stored) {
                 try {
                     const data = JSON.parse(stored);
-                    // Check if stored data is for current question (we'll check this after first poll)
+                    const storedQuestionId = data.questionId || null;
                     const storedResponses = data.responses || [];
-                    allResponses = new Map(storedResponses);
-                    lastQuestionId = data.questionId || null;
-                    console.log('📦 Loaded stored responses:', allResponses.size);
                     
-                    // Render stored responses immediately
-                    renderStoredResponses();
+                    // Only load if we have a question_id match (will be validated on first poll)
+                    if (storedQuestionId) {
+                        // Filter responses to only include those matching the stored question_id
+                        const filteredResponses = storedResponses.filter(([id, resp]) => {
+                            return resp && resp.question_id === storedQuestionId;
+                        });
+                        
+                        allResponses = new Map(filteredResponses);
+                        lastQuestionId = storedQuestionId;
+                        console.log(`📦 Loaded ${allResponses.size} stored responses for question_id: ${storedQuestionId}`);
+                    } else {
+                        allResponses = new Map();
+                        console.log('📦 No question_id in stored data, clearing');
+                    }
+                    
+                    // Don't render yet - wait for first poll to validate question_id
                 } catch (e) {
                     console.error('Error loading stored responses:', e);
                     allResponses = new Map();
@@ -425,9 +436,11 @@
         function displayResponses(responses, questionId) {
             const container = document.getElementById('responseContainer');
             
-            // Check if this is a new question
+            // CRITICAL: Check if this is a new question - MUST clear everything
             if (questionId && questionId !== lastQuestionId) {
-                console.log('🔄 New question detected, clearing old responses');
+                console.log('🔄 New question detected, clearing ALL old responses');
+                console.log(`  - Old question_id: ${lastQuestionId}`);
+                console.log(`  - New question_id: ${questionId}`);
                 allResponses.clear();
                 container.innerHTML = '';
                 lastQuestionId = questionId;
@@ -435,17 +448,35 @@
                 localStorage.removeItem('quiz_responses');
             }
             
-            // Add new responses to our map (prevents duplicates)
+            // FILTER: Only process responses for the current question_id
+            const currentQuestionResponses = responses.filter(response => {
+                const respQuestionId = response.question_id;
+                if (respQuestionId !== questionId) {
+                    console.log(`⚠️ Filtering out response from different question: ${respQuestionId} (current: ${questionId})`);
+                    return false;
+                }
+                return true;
+            });
+            
+            console.log(`📊 Processing ${currentQuestionResponses.length} responses for question_id: ${questionId} (filtered from ${responses.length} total)`);
+            
+            // Add new responses to our map (prevents duplicates) - ONLY for current question
             let newResponsesCount = 0;
             const newResponses = [];
             
-            responses.forEach(response => {
+            currentQuestionResponses.forEach(response => {
+                // Ensure response belongs to current question
+                if (response.question_id !== questionId) {
+                    console.log(`⚠️ Skipping response with wrong question_id: ${response.question_id}`);
+                    return;
+                }
+                
                 const responseId = response.response_id || `${response.student}_${response.option}_${response.question_id}_${response.timestamp}`;
                 if (!allResponses.has(responseId)) {
                     allResponses.set(responseId, response);
                     newResponses.push(response);
                     newResponsesCount++;
-                    console.log('➕ New response:', response.student, response.option);
+                    console.log('➕ New response:', response.student, response.option, 'for question:', questionId);
                 }
             });
             
@@ -495,7 +526,16 @@
         
         // Function to update stats from stored responses
         function updateStatsFromStored() {
-            const allResponsesArray = Array.from(allResponses.values());
+            // Filter to only count responses for current question
+            const allResponsesArray = Array.from(allResponses.values())
+                .filter(response => {
+                    // Only count responses for current question
+                    if (lastQuestionId && response.question_id !== lastQuestionId) {
+                        return false;
+                    }
+                    return true;
+                });
+            
             let correctCount = 0;
             let incorrectCount = 0;
             
@@ -517,12 +557,26 @@
                 return;
             }
             
-            // Convert map to array and sort by timestamp (most recent first)
+            // Convert map to array, filter by current question_id, and sort by timestamp
             const allResponsesArray = Array.from(allResponses.values())
+                .filter(response => {
+                    // Only show responses for current question
+                    if (lastQuestionId && response.question_id !== lastQuestionId) {
+                        console.log(`⚠️ Filtering out stored response from different question: ${response.question_id} (current: ${lastQuestionId})`);
+                        return false;
+                    }
+                    return true;
+                })
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
             
             // Clear container and render all stored responses
             container.innerHTML = '';
+            
+            if (allResponsesArray.length === 0) {
+                container.innerHTML = '<div class="response-card no-responses-msg" style="text-align: center; color: #666; font-style: italic;">No responses yet. Be the first to answer! 🚀</div>';
+                updateStats(0, 0, 0);
+                return;
+            }
             
             allResponsesArray.forEach((data) => {
                 const card = createResponseCard(data);
@@ -531,7 +585,7 @@
             
             updateStatsFromStored();
             
-            console.log(`📦 Rendered ${allResponsesArray.length} stored responses from localStorage`);
+            console.log(`📦 Rendered ${allResponsesArray.length} stored responses from localStorage for question_id: ${lastQuestionId}`);
         }
         
         // Update response statistics
