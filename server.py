@@ -651,25 +651,71 @@ def live_responses():
         current_question = active_quiz[current_question_index]
         question_id = current_question['id']
         
-        # Get responses from in-memory state (more reliable and faster)
-        print(f"🔍 Getting responses from in-memory state:")
-        print(f"  - question responses: {current_question['responses']}")
+        # Get responses directly from Firebase - ONLY for current question_id (persistent, single source of truth)
+        print(f"🔍 Getting responses from Firebase for question_id: {question_id}")
+        db = get_db()
+        
+        # Query Firebase for responses to THIS SPECIFIC question only
+        try:
+            firestore_responses = db.collection("responses")\
+                .where("question_id", "==", question_id)\
+                .stream()
+        except Exception as e:
+            print(f"⚠️ Error querying Firebase: {e}")
+            firestore_responses = []
         
         responses = []
-        for option, students in current_question['responses'].items():
-            for student in students:
-                correct = option == current_question['correct']
-                response_data = {
-                    "student": student,
-                    "option": option,
-                    "correct": correct,
-                    "timestamp": datetime.now().isoformat(),
-                    "question_id": question_id,
-                    "question_text": current_question['question'],
-                    "response_id": f"{student}_{option}_{question_id}"  # Generate unique ID
-                }
-                responses.append(response_data)
-                print(f"  - Added response: {student} -> {option} ({'✅' if correct else '❌'})")
+        seen_students = set()  # Track students to prevent duplicates in response list
+        
+        for doc in firestore_responses:
+            resp_data = doc.to_dict()
+            student = resp_data.get("student", "")
+            option = resp_data.get("answer", "")
+            is_correct = resp_data.get("is_correct", False)
+            timestamp = resp_data.get("timestamp")
+            
+            # CRITICAL: Only include if question_id matches (double check)
+            resp_question_id = resp_data.get("question_id", "")
+            if resp_question_id != question_id:
+                print(f"⚠️ Skipping response with wrong question_id: {resp_question_id} (expected: {question_id})")
+                continue
+            
+            # Skip duplicate responses from same student for this question (keep only latest)
+            student_key = f"{student}_{question_id}"
+            if student_key in seen_students:
+                print(f"⚠️ Skipping duplicate response for student: {student} (question: {question_id})")
+                continue
+            seen_students.add(student_key)
+            
+            # Convert Firestore timestamp to ISO format
+            if timestamp:
+                if isinstance(timestamp, datetime):
+                    timestamp_str = timestamp.isoformat()
+                elif hasattr(timestamp, 'isoformat'):
+                    timestamp_str = timestamp.isoformat()
+                else:
+                    try:
+                        if hasattr(timestamp, 'timestamp'):
+                            dt = datetime.fromtimestamp(timestamp.timestamp())
+                            timestamp_str = dt.isoformat()
+                        else:
+                            timestamp_str = datetime.now().isoformat()
+                    except:
+                        timestamp_str = datetime.now().isoformat()
+            else:
+                timestamp_str = datetime.now().isoformat()
+            
+            response_data = {
+                "student": student,
+                "option": option,
+                "correct": is_correct,
+                "timestamp": timestamp_str,
+                "question_id": question_id,  # Ensure it's the current question_id
+                "question_text": current_question['question'],
+                "response_id": f"{student}_{option}_{question_id}_{timestamp_str}"  # Unique ID
+            }
+            responses.append(response_data)
+            print(f"  - Added response from Firebase: {student} -> {option} ({'✅' if is_correct else '❌'}) for question_id: {question_id}")
         
         # Sort by timestamp (most recent first)
         responses.sort(key=lambda x: x['timestamp'], reverse=True)

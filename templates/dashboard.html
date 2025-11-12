@@ -632,17 +632,20 @@
                         return;
                     }
                     
-                    if (data.responses) {
-                        // Check if question changed
-                        if (data.question_id && data.question_id !== lastQuestionId) {
-                            // New question - clear everything
-                            console.log('🔄 Question changed from', lastQuestionId, 'to', data.question_id);
+                    if (data.responses && data.question_id) {
+                        // CRITICAL: Check if question changed - MUST clear everything
+                        if (data.question_id !== lastQuestionId) {
+                            // New question - clear EVERYTHING immediately
+                            console.log('🔄 Question changed - CLEARING ALL OLD RESPONSES');
+                            console.log(`  - Old question_id: ${lastQuestionId}`);
+                            console.log(`  - New question_id: ${data.question_id}`);
                             allResponses.clear();
                             lastQuestionId = data.question_id;
                             const container = document.getElementById('responseContainer');
                             container.innerHTML = '';
                             localStorage.removeItem('quiz_responses');
-                        } else if (data.question_id && !lastQuestionId) {
+                            console.log('✅ Cleared all old responses and localStorage');
+                        } else if (!lastQuestionId) {
                             // First poll - set question_id
                             lastQuestionId = data.question_id;
                             // Validate stored responses match current question
@@ -657,7 +660,6 @@
                                         localStorage.removeItem('quiz_responses');
                                         const container = document.getElementById('responseContainer');
                                         container.innerHTML = '';
-                                        // displayResponses will handle rendering the new responses
                                     }
                                 } catch (e) {
                                     console.error('Error validating stored responses:', e);
@@ -665,7 +667,17 @@
                             }
                         }
                         
-                        displayResponses(data.responses, data.question_id);
+                        // Filter responses to ONLY include current question_id (double check)
+                        const filteredResponses = data.responses.filter(resp => {
+                            if (resp.question_id !== data.question_id) {
+                                console.log(`⚠️ Filtering out response with wrong question_id: ${resp.question_id} (current: ${data.question_id})`);
+                                return false;
+                            }
+                            return true;
+                        });
+                        
+                        console.log(`📊 Displaying ${filteredResponses.length} responses for question_id: ${data.question_id} (filtered from ${data.responses.length} total)`);
+                        displayResponses(filteredResponses, data.question_id);
                     }
                 })
                 .catch(error => {
