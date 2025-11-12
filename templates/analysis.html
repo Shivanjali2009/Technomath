@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
     <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         .mdl-layout__content {
             padding: 24px;
@@ -181,42 +181,139 @@
     </div>
 
     <script>
-        // Performance Chart
-        const ctx = document.getElementById('performanceChart').getContext('2d');
-        const performanceData = {
-            labels: {{ performance.keys()|list|tojson }},
-            datasets: [{
-                label: 'Score',
-                data: {{ performance.values()|map(attribute='score')|list|tojson }},
-                backgroundColor: 'rgba(63, 81, 181, 0.5)',
-                borderColor: 'rgba(63, 81, 181, 1)',
-                borderWidth: 1
-            }]
-        };
+        // Wait for DOM and Chart.js to be fully loaded
+        function initChart() {
+            // Performance Chart
+            const canvas = document.getElementById('performanceChart');
+            
+            if (!canvas) {
+                console.error('Chart canvas element not found');
+                return;
+            }
+            
+            // Check if Chart is available
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js library not loaded');
+                canvas.parentElement.innerHTML = '<p style="color: red; padding: 20px;">Chart.js library failed to load. Please refresh the page.</p>';
+                return;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Prepare chart data from performance dictionary
+            const performanceData_raw = {{ performance|tojson }};
+            console.log('Performance data received:', performanceData_raw);
+            console.log('Performance data type:', typeof performanceData_raw);
+            console.log('Performance data keys:', Object.keys(performanceData_raw || {}));
+            
+            // Ensure we have a valid object
+            const performance = performanceData_raw || {};
+            
+            const labels = Object.keys(performance);
+            const scores = labels.map(student => {
+                const perf = performance[student];
+                if (perf && typeof perf === 'object') {
+                    return perf.score !== undefined ? perf.score : 0;
+                }
+                return 0;
+            });
+            
+            console.log('Chart data:', { labels, scores, performance, labelsLength: labels.length, scoresLength: scores.length });
+            
+            // Check if we have data
+            if (labels.length === 0 || scores.length === 0) {
+                console.warn('No chart data available. Performance:', performance);
+                console.warn('Labels:', labels, 'Scores:', scores);
+                canvas.parentElement.innerHTML = '<p style="color: #666; padding: 20px; text-align: center;">No student performance data available yet. Students need to respond to questions first.</p>';
+                return;
+            }
+            
+            const performanceData = {
+                labels: labels,
+                datasets: [{
+                    label: 'Score',
+                    data: scores,
+                    backgroundColor: 'rgba(63, 81, 181, 0.5)',
+                    borderColor: 'rgba(63, 81, 181, 1)',
+                    borderWidth: 1
+                }]
+            };
 
-        new Chart(ctx, {
-            type: 'bar',
-            data: performanceData,
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Score'
+            try {
+                // Destroy existing chart if it exists and is a valid Chart instance
+                if (window.performanceChart) {
+                    try {
+                        if (typeof window.performanceChart.destroy === 'function') {
+                            window.performanceChart.destroy();
                         }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Students'
+                    } catch (destroyError) {
+                        console.warn('Error destroying existing chart:', destroyError);
+                        // Continue anyway
+                    }
+                    window.performanceChart = null;
+                }
+                
+                window.performanceChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: performanceData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                enabled: true
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Score'
+                                },
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Students'
+                                }
+                            }
                         }
                     }
-                }
+                });
+                console.log('Chart created successfully with', labels.length, 'students');
+            } catch (error) {
+                console.error('Error creating chart:', error);
+                console.error('Error stack:', error.stack);
+                // Fallback: show error message
+                canvas.parentElement.innerHTML = '<p style="color: red; padding: 20px;">Error loading chart: ' + error.message + '</p>';
             }
-        });
+        }
+        
+        // Try multiple ways to ensure Chart.js is loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                // Wait a bit for Chart.js to load
+                setTimeout(initChart, 100);
+            });
+        } else {
+            // DOM already loaded
+            if (typeof Chart !== 'undefined') {
+                initChart();
+            } else {
+                // Wait for Chart.js to load
+                window.addEventListener('load', function() {
+                    setTimeout(initChart, 100);
+                });
+            }
+        }
     </script>
 </body>
 </html> 

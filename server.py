@@ -490,7 +490,8 @@ def dashboard():
     q = active_quiz[current_question_index]
     return render_template('dashboard.html',
                            quiz=q, index=current_question_index,
-                           total=len(active_quiz), current_set_id=session['current_set_id'])
+                           total=len(active_quiz), current_set_id=session['current_set_id'],
+                           session_id=current_session_id)
 
 @app.route('/next')
 def next_question():
@@ -655,79 +656,123 @@ def live_responses():
         print(f"🔍 Getting responses from Firebase for question_id: {question_id}")
         db = get_db()
         
+        responses = []
+        
         # Query Firebase for responses to THIS SPECIFIC question only
         try:
             firestore_responses = db.collection("responses")\
                 .where("question_id", "==", question_id)\
                 .stream()
-        except Exception as e:
-            print(f"⚠️ Error querying Firebase: {e}")
-            firestore_responses = []
-        
-        responses = []
-        seen_students = set()  # Track students to prevent duplicates in response list
-        
-        for doc in firestore_responses:
-            resp_data = doc.to_dict()
-            student = resp_data.get("student", "")
-            option = resp_data.get("answer", "")
-            is_correct = resp_data.get("is_correct", False)
-            timestamp = resp_data.get("timestamp")
             
-            # CRITICAL: Only include if question_id matches (double check)
-            resp_question_id = resp_data.get("question_id", "")
-            if resp_question_id != question_id:
-                print(f"⚠️ Skipping response with wrong question_id: {resp_question_id} (expected: {question_id})")
-                continue
+            print(f"📊 Querying Firebase for question_id: {question_id}")
+            response_count = 0
+            seen_students = {}  # Track latest response per student: {student: timestamp}
             
-            # Skip duplicate responses from same student for this question (keep only latest)
-            student_key = f"{student}_{question_id}"
-            if student_key in seen_students:
-                print(f"⚠️ Skipping duplicate response for student: {student} (question: {question_id})")
-                continue
-            seen_students.add(student_key)
-            
-            # Convert Firestore timestamp to ISO format
-            if timestamp:
-                if isinstance(timestamp, datetime):
-                    timestamp_str = timestamp.isoformat()
-                elif hasattr(timestamp, 'isoformat'):
-                    timestamp_str = timestamp.isoformat()
-                else:
+            for doc in firestore_responses:
+                response_count += 1
+                resp_data = doc.to_dict()
+                student = resp_data.get("student", "")
+                option = resp_data.get("answer", "")
+                is_correct = resp_data.get("is_correct", False)
+                timestamp = resp_data.get("timestamp")
+                
+                # Skip if missing required fields
+                if not student or not option:
+                    print(f"⚠️ Skipping response with missing data: student={student}, option={option}")
+                    continue
+                
+                # CRITICAL: Only include if question_id matches (double check)
+                resp_question_id = resp_data.get("question_id", "")
+                if resp_question_id != question_id:
+                    print(f"⚠️ Skipping response with wrong question_id: {resp_question_id} (expected: {question_id})")
+                    continue
+                
+                # Convert Firestore timestamp to ISO format
+                timestamp_str = datetime.now().isoformat()  # Default
+                if timestamp:
                     try:
+                        # Firestore Timestamp object
                         if hasattr(timestamp, 'timestamp'):
+                            # It's a Firestore Timestamp
                             dt = datetime.fromtimestamp(timestamp.timestamp())
                             timestamp_str = dt.isoformat()
+                        elif isinstance(timestamp, datetime):
+                            timestamp_str = timestamp.isoformat()
+                        elif hasattr(timestamp, 'isoformat'):
+                            timestamp_str = timestamp.isoformat()
                         else:
-                            timestamp_str = datetime.now().isoformat()
-                    except:
+                            # Try to convert string or other format
+                            timestamp_str = str(timestamp)
+                    except Exception as e:
+                        print(f"⚠️ Error converting timestamp: {e}, using current time")
                         timestamp_str = datetime.now().isoformat()
-            else:
-                timestamp_str = datetime.now().isoformat()
+                
+                # Track latest response per student (keep only the most recent)
+                if student in seen_students:
+                    # Compare timestamps to keep the latest
+                    if timestamp_str > seen_students[student]['timestamp']:
+                        # Remove old response and add new one
+                        responses = [r for r in responses if r['student'] != student]
+                        seen_students[student] = {'timestamp': timestamp_str}
+                    else:
+                        # Skip this older response
+                        print(f"⚠️ Skipping older duplicate response for student: {student}")
+                        continue
+                else:
+                    seen_students[student] = {'timestamp': timestamp_str}
+                
+                response_data = {
+                    "student": student,
+                    "option": option,
+                    "correct": is_correct,
+                    "timestamp": timestamp_str,
+                    "question_id": question_id,
+                    "question_text": current_question['question'],
+                    "response_id": f"{student}_{option}_{question_id}_{timestamp_str}"
+                }
+                responses.append(response_data)
+                print(f"  ✅ Added response: {student} -> {option} ({'✅' if is_correct else '❌'}) at {timestamp_str}")
             
-            response_data = {
-                "student": student,
-                "option": option,
-                "correct": is_correct,
-                "timestamp": timestamp_str,
-                "question_id": question_id,  # Ensure it's the current question_id
-                "question_text": current_question['question'],
-                "response_id": f"{student}_{option}_{question_id}_{timestamp_str}"  # Unique ID
-            }
-            responses.append(response_data)
-            print(f"  - Added response from Firebase: {student} -> {option} ({'✅' if is_correct else '❌'}) for question_id: {question_id}")
+            print(f"📊 Found {response_count} total responses in Firebase, processed {len(responses)} unique responses")
+            
+        except Exception as e:
+            print(f"❌ Error querying Firebase: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: try to get from in-memory state
+            print("⚠️ Falling back to in-memory state")
+            for option, students in current_question['responses'].items():
+                for student in students:
+                    correct = option == current_question['correct']
+                    response_data = {
+                        "student": student,
+                        "option": option,
+                        "correct": correct,
+                        "timestamp": datetime.now().isoformat(),
+                        "question_id": question_id,
+                        "question_text": current_question['question'],
+                        "response_id": f"{student}_{option}_{question_id}"
+                    }
+                    responses.append(response_data)
         
         # Sort by timestamp (most recent first)
-        responses.sort(key=lambda x: x['timestamp'], reverse=True)
+        try:
+            responses.sort(key=lambda x: x['timestamp'], reverse=True)
+        except Exception as e:
+            print(f"⚠️ Error sorting responses: {e}")
         
         print(f"📊 Live responses for question {current_question_index + 1}: {len(responses)} responses")
-        for resp in responses:
-            print(f"  - {resp['student']}: {resp['option']} ({'✅' if resp['correct'] else '❌'}) at {resp['timestamp']}")
+        if len(responses) > 0:
+            for resp in responses:
+                print(f"  - {resp['student']}: {resp['option']} ({'✅' if resp['correct'] else '❌'}) at {resp['timestamp']}")
+        else:
+            print("  ⚠️ No responses found for this question")
         
+        # Always return a valid response, even if empty
         return jsonify({
             "question_id": question_id,
             "question_text": current_question['question'],
-            "responses": responses,
+            "responses": responses if responses else [],  # Ensure it's always a list
             "session_id": current_session_id,
             "question_index": current_question_index,
             "total_responses": len(responses)
@@ -804,19 +849,41 @@ def analysis():
     set_details = question_set_details(current_set_id)
     total_questions = count_questions(current_set_id)
 
+    # Get all students who have responded from Firebase (not just in-memory session)
+    db = get_db()
+    all_responses = db.collection("responses")\
+        .where("set_id", "==", current_set_id)\
+        .stream()
+    
+    # Collect all unique students from Firebase responses
+    students_from_responses = set()
+    for doc in all_responses:
+        resp_data = doc.to_dict()
+        student = resp_data.get("student", "")
+        if student:
+            students_from_responses.add(student)
+    
+    # Combine students from session and Firebase
+    all_students = set(student_scores.keys()) | students_from_responses
+    
     student_performance = {}
-    for student in student_scores:
+    for student in all_students:
         correct = correct_count_for_student_in_set(student, current_set_id)
         student_performance[student] = {
             'score': correct,
             'total': total_questions,
             'percentage': (correct / total_questions) * 100 if total_questions else 0
         }
+    
+    # Debug: Print performance data
+    print(f"📊 Student performance data: {len(student_performance)} students")
+    for student, perf in student_performance.items():
+        print(f"  - {student}: score={perf['score']}, total={perf['total']}, percentage={perf['percentage']:.1f}%")
 
     q_analysis = question_analysis_data(current_set_id)
     
     # Calculate overall statistics
-    total_students = len(student_scores)
+    total_students = len(all_students)  # Use combined students from session and Firebase
     total_responses = sum(len(question['responses'][opt]) for question in active_quiz for opt in ['A', 'B', 'C', 'D'])
     average_score = sum(perf['score'] for perf in student_performance.values()) / max(total_students, 1)
     average_percentage = sum(perf['percentage'] for perf in student_performance.values()) / max(total_students, 1)

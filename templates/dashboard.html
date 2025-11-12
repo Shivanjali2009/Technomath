@@ -362,48 +362,27 @@
         const maxRetries = 3;
         let isPolling = false;
         
-        // Load responses from localStorage on page load
+        // Clear localStorage on quiz start - don't store anything
+        function clearLocalStorageOnQuizStart() {
+            console.log('🔄 Clearing localStorage on quiz start');
+            localStorage.removeItem('quiz_responses');
+            localStorage.removeItem('quiz_session_id');
+            allResponses.clear();
+            lastQuestionId = null;
+            console.log('✅ localStorage cleared');
+        }
+        
+        // Don't load from localStorage - always start fresh
         function loadStoredResponses() {
-            const stored = localStorage.getItem('quiz_responses');
-            if (stored) {
-                try {
-                    const data = JSON.parse(stored);
-                    const storedQuestionId = data.questionId || null;
-                    const storedResponses = data.responses || [];
-                    
-                    // Only load if we have a question_id match (will be validated on first poll)
-                    if (storedQuestionId) {
-                        // Filter responses to only include those matching the stored question_id
-                        const filteredResponses = storedResponses.filter(([id, resp]) => {
-                            return resp && resp.question_id === storedQuestionId;
-                        });
-                        
-                        allResponses = new Map(filteredResponses);
-                        lastQuestionId = storedQuestionId;
-                        console.log(`📦 Loaded ${allResponses.size} stored responses for question_id: ${storedQuestionId}`);
-                    } else {
-                        allResponses = new Map();
-                        console.log('📦 No question_id in stored data, clearing');
-                    }
-                    
-                    // Don't render yet - wait for first poll to validate question_id
-                } catch (e) {
-                    console.error('Error loading stored responses:', e);
-                    allResponses = new Map();
-                }
-            } else {
-                allResponses = new Map();
-            }
+            // Always clear localStorage when quiz starts
+            clearLocalStorageOnQuizStart();
+            allResponses = new Map();
         }
 
-        // Save responses to localStorage
+        // Don't save to localStorage - user wants fresh start every time
         function saveResponses() {
-            const data = {
-                responses: Array.from(allResponses.entries()),
-                questionId: lastQuestionId,
-                timestamp: Date.now()
-            };
-            localStorage.setItem('quiz_responses', JSON.stringify(data));
+            // Do nothing - don't store in localStorage
+            // localStorage is cleared on quiz start
         }
 
         // Function to render a single response card
@@ -444,8 +423,7 @@
                 allResponses.clear();
                 container.innerHTML = '';
                 lastQuestionId = questionId;
-                // Clear localStorage for new question
-                localStorage.removeItem('quiz_responses');
+                // localStorage is already cleared on quiz start, no need to clear again
             }
             
             // FILTER: Only process responses for the current question_id
@@ -643,28 +621,12 @@
                             lastQuestionId = data.question_id;
                             const container = document.getElementById('responseContainer');
                             container.innerHTML = '';
-                            localStorage.removeItem('quiz_responses');
-                            console.log('✅ Cleared all old responses and localStorage');
+                            // localStorage is already cleared on quiz start
+                            console.log('✅ Cleared all old responses');
                         } else if (!lastQuestionId) {
                             // First poll - set question_id
                             lastQuestionId = data.question_id;
-                            // Validate stored responses match current question
-                            const stored = localStorage.getItem('quiz_responses');
-                            if (stored) {
-                                try {
-                                    const storedData = JSON.parse(stored);
-                                    if (storedData.questionId !== data.question_id) {
-                                        // Stored responses are for a different question - clear them
-                                        console.log('🔄 Stored responses are for different question, clearing');
-                                        allResponses.clear();
-                                        localStorage.removeItem('quiz_responses');
-                                        const container = document.getElementById('responseContainer');
-                                        container.innerHTML = '';
-                                    }
-                                } catch (e) {
-                                    console.error('Error validating stored responses:', e);
-                                }
-                            }
+                            // No need to check localStorage - it's cleared on quiz start
                         }
                         
                         // Filter responses to ONLY include current question_id (double check)
@@ -744,7 +706,9 @@
         
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            loadStoredResponses(); // Load responses from localStorage
+            // Always clear localStorage when quiz starts
+            clearLocalStorageOnQuizStart();
+            loadStoredResponses(); // This now just clears and initializes
             startPolling();
         });
         
