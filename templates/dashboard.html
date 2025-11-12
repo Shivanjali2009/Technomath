@@ -308,9 +308,16 @@
                     </div>
                 </div>
                 <div class="mdl-card__actions action-buttons">
+                    {% if index > 0 %}
+                    <a href="/previous" class="mdl-button mdl-js-button mdl-button--raised">
+                        ⬅️ Previous Question
+                    </a>
+                    {% endif %}
+                    {% if index < total - 1 %}
                     <a href="/next" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
                         ➡️ Next Question
                     </a>
+                    {% endif %}
                     <a href="/analysis" class="mdl-button mdl-js-button mdl-button--raised">
                         📊 View Analysis
                     </a>
@@ -411,26 +418,37 @@
             return div;
         }
 
-        // Function to display responses with stable UI and localStorage - only append new ones
+        // Function to display responses with stable UI - only append new ones for current question
         function displayResponses(responses, questionId) {
             const container = document.getElementById('responseContainer');
             
-            // CRITICAL: Check if this is a new question - MUST clear everything
+            // CRITICAL: Check if this is a new question - MUST clear everything immediately
             if (questionId && questionId !== lastQuestionId) {
-                console.log('🔄 New question detected, clearing ALL old responses');
+                console.log('🔄 NEW QUESTION DETECTED - CLEARING EVERYTHING');
                 console.log(`  - Old question_id: ${lastQuestionId}`);
                 console.log(`  - New question_id: ${questionId}`);
                 allResponses.clear();
                 container.innerHTML = '';
                 lastQuestionId = questionId;
-                // localStorage is already cleared on quiz start, no need to clear again
+                // Force clear any lingering responses
+                setTimeout(() => {
+                    container.innerHTML = '';
+                }, 100);
             }
             
-            // FILTER: Only process responses for the current question_id
+            // STRICT FILTER: Only process responses that EXACTLY match current question_id
+            if (!questionId) {
+                console.warn('⚠️ No question_id provided, skipping display');
+                return;
+            }
+            
             const currentQuestionResponses = responses.filter(response => {
+                // Triple check: question_id must match exactly
                 const respQuestionId = response.question_id;
-                if (respQuestionId !== questionId) {
-                    console.log(`⚠️ Filtering out response from different question: ${respQuestionId} (current: ${questionId})`);
+                if (!respQuestionId || respQuestionId !== questionId) {
+                    if (respQuestionId) {
+                        console.log(`⚠️ STRICT FILTER: Rejecting response from question ${respQuestionId} (current: ${questionId})`);
+                    }
                     return false;
                 }
                 return true;
@@ -443,9 +461,9 @@
             const newResponses = [];
             
             currentQuestionResponses.forEach(response => {
-                // Ensure response belongs to current question
-                if (response.question_id !== questionId) {
-                    console.log(`⚠️ Skipping response with wrong question_id: ${response.question_id}`);
+                // Final check: Ensure response belongs to current question
+                if (!response.question_id || response.question_id !== questionId) {
+                    console.log(`⚠️ FINAL CHECK: Skipping response with wrong question_id: ${response.question_id} (expected: ${questionId})`);
                     return;
                 }
                 
@@ -455,6 +473,8 @@
                     newResponses.push(response);
                     newResponsesCount++;
                     console.log('➕ New response:', response.student, response.option, 'for question:', questionId);
+                } else {
+                    console.log('⚠️ Duplicate response skipped:', responseId);
                 }
             });
             
@@ -611,35 +631,47 @@
                     }
                     
                     if (data.responses && data.question_id) {
-                        // CRITICAL: Check if question changed - MUST clear everything
+                        // CRITICAL: Check if question changed - MUST clear everything immediately
                         if (data.question_id !== lastQuestionId) {
                             // New question - clear EVERYTHING immediately
-                            console.log('🔄 Question changed - CLEARING ALL OLD RESPONSES');
+                            console.log('🔄 QUESTION CHANGED - CLEARING ALL OLD RESPONSES');
                             console.log(`  - Old question_id: ${lastQuestionId}`);
                             console.log(`  - New question_id: ${data.question_id}`);
                             allResponses.clear();
                             lastQuestionId = data.question_id;
                             const container = document.getElementById('responseContainer');
-                            container.innerHTML = '';
-                            // localStorage is already cleared on quiz start
-                            console.log('✅ Cleared all old responses');
+                            if (container) {
+                                container.innerHTML = '';
+                            }
+                            console.log('✅ Cleared all old responses and container');
                         } else if (!lastQuestionId) {
                             // First poll - set question_id
                             lastQuestionId = data.question_id;
-                            // No need to check localStorage - it's cleared on quiz start
+                            console.log(`📌 First poll - setting question_id: ${data.question_id}`);
                         }
                         
-                        // Filter responses to ONLY include current question_id (double check)
+                        // STRICT FILTER: Only include responses that EXACTLY match current question_id
                         const filteredResponses = data.responses.filter(resp => {
-                            if (resp.question_id !== data.question_id) {
-                                console.log(`⚠️ Filtering out response with wrong question_id: ${resp.question_id} (current: ${data.question_id})`);
+                            // Triple check: question_id must match exactly
+                            if (!resp.question_id || resp.question_id !== data.question_id) {
+                                if (resp.question_id) {
+                                    console.log(`⚠️ STRICT FILTER: Rejecting response from question ${resp.question_id} (current: ${data.question_id})`);
+                                }
                                 return false;
                             }
                             return true;
                         });
                         
-                        console.log(`📊 Displaying ${filteredResponses.length} responses for question_id: ${data.question_id} (filtered from ${data.responses.length} total)`);
-                        displayResponses(filteredResponses, data.question_id);
+                        console.log(`📊 Backend poll: ${filteredResponses.length} responses for question_id: ${data.question_id} (filtered from ${data.responses.length} total)`);
+                        
+                        // Only display if we have responses for the current question
+                        if (filteredResponses.length > 0 || allResponses.size === 0) {
+                            displayResponses(filteredResponses, data.question_id);
+                        } else {
+                            console.log('⚠️ No new responses for current question, skipping display');
+                        }
+                    } else {
+                        console.warn('⚠️ Missing question_id or responses in poll data');
                     }
                 })
                 .catch(error => {

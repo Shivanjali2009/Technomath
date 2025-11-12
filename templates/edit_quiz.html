@@ -192,12 +192,69 @@
 
         function renderQuestions() {
             const container = document.getElementById('questions-container');
+            
+            // FIRST: Save current values from input fields before clearing
+            questions.forEach((q, i) => {
+                // Try to get values from existing input fields
+                const questionInput = document.getElementById(`question_${i}`);
+                const optionAInput = document.getElementById(`A_${i}`);
+                const optionBInput = document.getElementById(`B_${i}`);
+                const optionCInput = document.getElementById(`C_${i}`);
+                const optionDInput = document.getElementById(`D_${i}`);
+                const correctInput = document.getElementById(`correct_${i}`);
+                
+                if (questionInput || optionAInput) {
+                    // Update the questions array with current input values
+                    if (Array.isArray(q)) {
+                        q[2] = questionInput ? questionInput.value : (q[2] || '');
+                        q[3] = optionAInput ? optionAInput.value : (q[3] || '');
+                        q[4] = optionBInput ? optionBInput.value : (q[4] || '');
+                        q[5] = optionCInput ? optionCInput.value : (q[5] || '');
+                        q[6] = optionDInput ? optionDInput.value : (q[6] || '');
+                        q[7] = correctInput ? correctInput.value : (q[7] || 'A');
+                    } else if (typeof q === 'object' && q !== null) {
+                        q.question = questionInput ? questionInput.value : (q.question || '');
+                        if (!q.options) q.options = {};
+                        q.options.A = optionAInput ? optionAInput.value : ((q.options && q.options.A) || '');
+                        q.options.B = optionBInput ? optionBInput.value : ((q.options && q.options.B) || '');
+                        q.options.C = optionCInput ? optionCInput.value : ((q.options && q.options.C) || '');
+                        q.options.D = optionDInput ? optionDInput.value : ((q.options && q.options.D) || '');
+                        q.correct = correctInput ? correctInput.value : (q.correct || 'A');
+                    }
+                }
+            });
+            
+            // NOW clear and re-render
             container.innerHTML = '';
             document.getElementById('num_questions').value = questions.length;
 
             questions.forEach((q, i) => {
                 const questionDiv = document.createElement('div');
                 questionDiv.className = 'mdl-card mdl-shadow--2dp question-card';
+                
+                // Safely extract question data - handle both array and object formats
+                let questionText = '';
+                let optionA = '', optionB = '', optionC = '', optionD = '';
+                let correctAnswer = 'A';
+                
+                if (Array.isArray(q)) {
+                    // Array format: [id, ?, question, optionA, optionB, optionC, optionD, correct]
+                    questionText = (q[2] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionA = (q[3] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionB = (q[4] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionC = (q[5] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionD = (q[6] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    correctAnswer = q[7] || 'A';
+                } else if (typeof q === 'object' && q !== null) {
+                    // Object format: {question, options: {A, B, C, D}, correct}
+                    questionText = (q.question || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionA = ((q.options && q.options.A) || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionB = ((q.options && q.options.B) || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionC = ((q.options && q.options.C) || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    optionD = ((q.options && q.options.D) || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    correctAnswer = q.correct || 'A';
+                }
+                
                 questionDiv.innerHTML = `
                     <div class="mdl-card__supporting-text">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -207,22 +264,33 @@
                             </button>
                         </div>
                         <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label" style="width: 100%;">
-                            <input class="mdl-textfield__input" type="text" id="question_${i}" name="question_${i}" value="${q[2]}" required>
+                            <input class="mdl-textfield__input" type="text" id="question_${i}" name="question_${i}" value="${questionText}" required>
                             <label class="mdl-textfield__label" for="question_${i}">Question Text</label>
                         </div>
                         <div class="option-grid">
-                            ${['A', 'B', 'C', 'D'].map((opt, idx) => `
-                                <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
-                                    <input class="mdl-textfield__input" type="text" id="${opt}_${i}" name="${opt}_${i}" value="${q[3+idx]}" required>
-                                    <label class="mdl-textfield__label" for="${opt}_${i}">Option ${opt}</label>
-                                </div>
-                            `).join('')}
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <input class="mdl-textfield__input" type="text" id="A_${i}" name="A_${i}" value="${optionA}" required>
+                                <label class="mdl-textfield__label" for="A_${i}">Option A</label>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <input class="mdl-textfield__input" type="text" id="B_${i}" name="B_${i}" value="${optionB}" required>
+                                <label class="mdl-textfield__label" for="B_${i}">Option B</label>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <input class="mdl-textfield__input" type="text" id="C_${i}" name="C_${i}" value="${optionC}" required>
+                                <label class="mdl-textfield__label" for="C_${i}">Option C</label>
+                            </div>
+                            <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                                <input class="mdl-textfield__input" type="text" id="D_${i}" name="D_${i}" value="${optionD}" required>
+                                <label class="mdl-textfield__label" for="D_${i}">Option D</label>
+                            </div>
                         </div>
                         <div class="mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
                             <select class="mdl-textfield__input" id="correct_${i}" name="correct_${i}" required>
-                                ${['A', 'B', 'C', 'D'].map(opt => `
-                                    <option value="${opt}" ${q[7] === opt ? 'selected' : ''}>${opt}</option>
-                                `).join('')}
+                                <option value="A" ${correctAnswer === 'A' ? 'selected' : ''}>A</option>
+                                <option value="B" ${correctAnswer === 'B' ? 'selected' : ''}>B</option>
+                                <option value="C" ${correctAnswer === 'C' ? 'selected' : ''}>C</option>
+                                <option value="D" ${correctAnswer === 'D' ? 'selected' : ''}>D</option>
                             </select>
                             <label class="mdl-textfield__label" for="correct_${i}">Correct Answer</label>
                         </div>
@@ -234,8 +302,17 @@
         }
 
         function addQuestion() {
+            // Add new empty question with proper structure
+            // Format: [id, ?, question, optionA, optionB, optionC, optionD, correct]
             questions.push(["", "", "", "", "", "", "", "A"]);
             renderQuestions();
+            // Scroll to the newly added question
+            setTimeout(() => {
+                const container = document.getElementById('questions-container');
+                if (container && container.lastElementChild) {
+                    container.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }, 100);
         }
 
         function removeQuestion(index) {

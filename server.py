@@ -507,6 +507,19 @@ def next_question():
     
     return redirect(url_for('dashboard'))
 
+@app.route('/previous')
+def previous_question():
+    """Move to previous question."""
+    if not current_session_id or current_session_id not in quiz_sessions:
+        return redirect(url_for('home'))
+    
+    session = quiz_sessions[current_session_id]
+    
+    if session['current_question_index'] > 0:
+        session['current_question_index'] -= 1
+    
+    return redirect(url_for('dashboard'))
+
 @app.route('/receive_data')
 def receive_data():
     """Receive student response data."""
