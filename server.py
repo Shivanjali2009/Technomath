@@ -694,10 +694,11 @@ def live_responses():
                     print(f"⚠️ Skipping response with missing data: student={student}, option={option}")
                     continue
                 
-                # CRITICAL: Only include if question_id matches (double check)
-                resp_question_id = resp_data.get("question_id", "")
-                if resp_question_id != question_id:
-                    print(f"⚠️ Skipping response with wrong question_id: {resp_question_id} (expected: {question_id})")
+                # CRITICAL: Only include if question_id matches (double check with normalized comparison)
+                resp_question_id = str(resp_data.get("question_id", "")).strip()
+                question_id_str = str(question_id).strip()
+                if resp_question_id != question_id_str:
+                    print(f"⚠️ Skipping response with wrong question_id: '{resp_question_id}' (expected: '{question_id_str}')")
                     continue
                 
                 # Convert Firestore timestamp to ISO format

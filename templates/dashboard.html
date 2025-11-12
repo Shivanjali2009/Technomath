@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Quiz Dashboard - TechnoMath</title>
     <!-- Material Design Lite CSS -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
@@ -422,32 +425,45 @@
         function displayResponses(responses, questionId) {
             const container = document.getElementById('responseContainer');
             
+            // Normalize question_id to string for comparison
+            const normalizedQuestionId = String(questionId || '').trim();
+            const normalizedLastQuestionId = String(lastQuestionId || '').trim();
+            
             // CRITICAL: Check if this is a new question - MUST clear everything immediately
-            if (questionId && questionId !== lastQuestionId) {
+            if (normalizedQuestionId && normalizedQuestionId !== normalizedLastQuestionId) {
                 console.log('🔄 NEW QUESTION DETECTED - CLEARING EVERYTHING');
-                console.log(`  - Old question_id: ${lastQuestionId}`);
-                console.log(`  - New question_id: ${questionId}`);
+                console.log(`  - Old question_id: ${normalizedLastQuestionId} (type: ${typeof lastQuestionId})`);
+                console.log(`  - New question_id: ${normalizedQuestionId} (type: ${typeof questionId})`);
                 allResponses.clear();
-                container.innerHTML = '';
-                lastQuestionId = questionId;
-                // Force clear any lingering responses
-                setTimeout(() => {
+                if (container) {
                     container.innerHTML = '';
-                }, 100);
+                    // Force clear multiple times to ensure it's cleared
+                    setTimeout(() => {
+                        container.innerHTML = '';
+                        // Remove all child nodes
+                        while (container.firstChild) {
+                            container.removeChild(container.firstChild);
+                        }
+                    }, 50);
+                    setTimeout(() => {
+                        container.innerHTML = '';
+                    }, 150);
+                }
+                lastQuestionId = normalizedQuestionId;
             }
             
             // STRICT FILTER: Only process responses that EXACTLY match current question_id
-            if (!questionId) {
+            if (!normalizedQuestionId) {
                 console.warn('⚠️ No question_id provided, skipping display');
                 return;
             }
             
             const currentQuestionResponses = responses.filter(response => {
-                // Triple check: question_id must match exactly
-                const respQuestionId = response.question_id;
-                if (!respQuestionId || respQuestionId !== questionId) {
+                // Normalize and compare question_ids strictly
+                const respQuestionId = String(response.question_id || '').trim();
+                if (!respQuestionId || respQuestionId !== normalizedQuestionId) {
                     if (respQuestionId) {
-                        console.log(`⚠️ STRICT FILTER: Rejecting response from question ${respQuestionId} (current: ${questionId})`);
+                        console.log(`⚠️ STRICT FILTER: Rejecting response from question "${respQuestionId}" (current: "${normalizedQuestionId}")`);
                     }
                     return false;
                 }
@@ -461,9 +477,10 @@
             const newResponses = [];
             
             currentQuestionResponses.forEach(response => {
-                // Final check: Ensure response belongs to current question
-                if (!response.question_id || response.question_id !== questionId) {
-                    console.log(`⚠️ FINAL CHECK: Skipping response with wrong question_id: ${response.question_id} (expected: ${questionId})`);
+                // Final check: Ensure response belongs to current question (normalized comparison)
+                const respQuestionId = String(response.question_id || '').trim();
+                if (!respQuestionId || respQuestionId !== normalizedQuestionId) {
+                    console.log(`⚠️ FINAL CHECK: Skipping response with wrong question_id: "${respQuestionId}" (expected: "${normalizedQuestionId}")`);
                     return;
                 }
                 
@@ -524,11 +541,15 @@
         
         // Function to update stats from stored responses
         function updateStatsFromStored() {
+            // Normalize lastQuestionId for comparison
+            const normalizedLastQuestionId = String(lastQuestionId || '').trim();
+            
             // Filter to only count responses for current question
             const allResponsesArray = Array.from(allResponses.values())
                 .filter(response => {
-                    // Only count responses for current question
-                    if (lastQuestionId && response.question_id !== lastQuestionId) {
+                    // Only count responses for current question (normalized comparison)
+                    const respQuestionId = String(response.question_id || '').trim();
+                    if (normalizedLastQuestionId && respQuestionId !== normalizedLastQuestionId) {
                         return false;
                     }
                     return true;
@@ -555,12 +576,16 @@
                 return;
             }
             
+            // Normalize lastQuestionId for comparison
+            const normalizedLastQuestionId = String(lastQuestionId || '').trim();
+            
             // Convert map to array, filter by current question_id, and sort by timestamp
             const allResponsesArray = Array.from(allResponses.values())
                 .filter(response => {
-                    // Only show responses for current question
-                    if (lastQuestionId && response.question_id !== lastQuestionId) {
-                        console.log(`⚠️ Filtering out stored response from different question: ${response.question_id} (current: ${lastQuestionId})`);
+                    // Only show responses for current question (normalized comparison)
+                    const respQuestionId = String(response.question_id || '').trim();
+                    if (normalizedLastQuestionId && respQuestionId !== normalizedLastQuestionId) {
+                        console.log(`⚠️ Filtering out stored response from different question: "${respQuestionId}" (current: "${normalizedLastQuestionId}")`);
                         return false;
                     }
                     return true;
@@ -631,31 +656,40 @@
                     }
                     
                     if (data.responses && data.question_id) {
+                        // Normalize question_ids for strict comparison
+                        const currentQuestionId = String(data.question_id).trim();
+                        const lastQuestionIdStr = String(lastQuestionId || '').trim();
+                        
                         // CRITICAL: Check if question changed - MUST clear everything immediately
-                        if (data.question_id !== lastQuestionId) {
+                        if (currentQuestionId !== lastQuestionIdStr) {
                             // New question - clear EVERYTHING immediately
                             console.log('🔄 QUESTION CHANGED - CLEARING ALL OLD RESPONSES');
-                            console.log(`  - Old question_id: ${lastQuestionId}`);
-                            console.log(`  - New question_id: ${data.question_id}`);
+                            console.log(`  - Old question_id: "${lastQuestionIdStr}" (type: ${typeof lastQuestionId})`);
+                            console.log(`  - New question_id: "${currentQuestionId}" (type: ${typeof data.question_id})`);
                             allResponses.clear();
-                            lastQuestionId = data.question_id;
+                            lastQuestionId = currentQuestionId;
                             const container = document.getElementById('responseContainer');
                             if (container) {
                                 container.innerHTML = '';
+                                // Aggressively clear all child nodes
+                                while (container.firstChild) {
+                                    container.removeChild(container.firstChild);
+                                }
                             }
                             console.log('✅ Cleared all old responses and container');
                         } else if (!lastQuestionId) {
                             // First poll - set question_id
-                            lastQuestionId = data.question_id;
-                            console.log(`📌 First poll - setting question_id: ${data.question_id}`);
+                            lastQuestionId = currentQuestionId;
+                            console.log(`📌 First poll - setting question_id: "${currentQuestionId}"`);
                         }
                         
-                        // STRICT FILTER: Only include responses that EXACTLY match current question_id
+                        // STRICT FILTER: Only include responses that EXACTLY match current question_id (normalized)
                         const filteredResponses = data.responses.filter(resp => {
-                            // Triple check: question_id must match exactly
-                            if (!resp.question_id || resp.question_id !== data.question_id) {
-                                if (resp.question_id) {
-                                    console.log(`⚠️ STRICT FILTER: Rejecting response from question ${resp.question_id} (current: ${data.question_id})`);
+                            // Normalize and compare question_ids strictly
+                            const respQuestionId = String(resp.question_id || '').trim();
+                            if (!respQuestionId || respQuestionId !== currentQuestionId) {
+                                if (respQuestionId) {
+                                    console.log(`⚠️ STRICT FILTER: Rejecting response from question "${respQuestionId}" (current: "${currentQuestionId}")`);
                                 }
                                 return false;
                             }
